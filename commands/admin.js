@@ -12,21 +12,33 @@ module.exports = {
     .setName("admin")
     .setDescription("لوحة تحكم المشرف لإدارة حسابات المستخدمين")
     .addUserOption(opt =>
-      opt.setName("target")               // << option name = target
-         .setDescription("اختر مستخدمًا لإدارته")
-         .setRequired(false)
+      opt.setName("target")
+        .setDescription("اختر مستخدمًا لإدارته")
+        .setRequired(false)
     ),
 
-  async execute(interaction, { cfg, users: loadUsers }) {
-    const target = interaction.options.getUser("target") || interaction.user; // << uses 'target'
+  async execute(interaction, ctx) {
+    // ctx.cfg may be a function OR an object depending on index.js
+    const conf = typeof ctx?.cfg === "function"
+      ? ctx.cfg()
+      : (ctx?.cfg || require("../config.json"));
+
+    const loadUsers = ctx.users; // your loader
+    const target = interaction.options.getUser("target") || interaction.user;
     const U = loadUsers();
     const record = U[target.id];
 
-    const conf = cfg();
     const data = record || {
-      name: target.username, country: "—", age: "—", birth: "—", income: 0,
-      rank: conf.ranks?.[0] || "Bronze", balance: 0, status: "no-record",
-      kind: "—", faction: "—",
+      name: target.username,
+      country: "—",
+      age: "—",
+      birth: "—",
+      income: 0,
+      rank: conf.ranks?.[0] || "Bronze",
+      balance: 0,
+      status: "no-record",
+      kind: "—",
+      faction: "—",
     };
 
     const embed = new EmbedBuilder()
