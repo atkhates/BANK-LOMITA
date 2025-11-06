@@ -17,6 +17,7 @@ const {
 const fs = require("fs");
 require("dotenv").config();
 
+const Sheets = require('./sheets');
 const permsMap = require("./permissions.json");
 const GC = require("./guildConfig"); // gconf(gid).*
 
@@ -420,5 +421,12 @@ client.on("userRegistered", async (guildId, user) => {
     console.error("send review:", e);
   }
 });
+
+// ... your existing saveUsers
+function saveUsers(users) {
+  fs.writeFileSync("./database/users.json", JSON.stringify(users, null, 2));
+  // Fire-and-forget sync to Google Sheets
+  Sheets.syncUsers(users).catch((e) => console.error("Sheet sync error:", e));
+}
 
 client.login(process.env.TOKEN);
