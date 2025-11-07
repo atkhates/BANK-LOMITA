@@ -1,4 +1,4 @@
-// index.js — Arabic + robust register flow + review channel + admin actions
+// index.js — Arabic + robust register flow + per-guild config + review channel
 
 const {
   Client,
@@ -18,19 +18,11 @@ const {
 const fs = require("fs");
 require("dotenv").config();
 
-// ---- Config (IDs, fees, etc.)
-const {
-  ADMIN_CHANNEL_ID,        // review-channel ID (where registration cards go)
-  ADMIN_LOG_CHANNEL_ID,    // logs channel ID (optional)
-  ADMIN_ROLE_ID,           // top admin role id (optional)
-  CURRENCY_SYMBOL,
-  REGISTER_CHANNEL_ID,     // channel where /register is allowed
-} = require("./config.json");
-
-// ---- Permissions map (role IDs for actions)
+const baseConf = require("./config.json");           // global defaults
 const permsMap = require("./permissions.json");
+const GC = require("./guildConfig");                 // per-guild overrides
 
-// ---- Optional Google Sheets sync (safe if file/env not present)
+// Optional Google Sheets sync (safe if missing)
 let Sheets = null;
 try { Sheets = require("./sheets"); } catch { Sheets = { syncUsers: async () => {} }; }
 
@@ -69,39 +61,68 @@ function saveUsers(users) {
   Promise.resolve(Sheets.syncUsers(users)).catch((e) => console.error("Sheet sync error:", e));
 }
 
-/** hot-reload config getter (pass THIS to commands) */
+/** hot-reload global config */
 function cfg() {
   delete require.cache[require.resolve("./config.json")];
   // eslint-disable-next-line global-require
   return require("./config.json");
 }
 
+/** per-guild config getter (merges defaults + guild overrides) */
+function gconf(guildId) {
+  const global = cfg();
+  const g = GC.get(guildId || "");
+  return {
+    ...global,
+    ...g,
+  };
+}
+
 function hasAnyRoleId(member, ids = []) {
   return !!ids?.length && member.roles.cache.some((r) => ids.includes(r.id));
 }
-
 function hasPermission(member, actionKey) {
+  const conf = gconf(member.guild?.id);
   return (
     member.permissions?.has?.(PermissionFlagsBits.Administrator) ||
-    (ADMIN_ROLE_ID && member.roles.cache.has(ADMIN_ROLE_ID)) ||
+    (conf.ADMIN_ROLE_ID && member.roles.cache.has(conf.ADMIN_ROLE_ID)) ||
     hasAnyRoleId(member, permsMap[actionKey] || [])
   );
 }
-
 function canOpenAdminPanel(member) {
   return (
     member.permissions?.has?.(PermissionFlagsBits.Administrator) ||
-    (ADMIN_ROLE_ID && member.roles.cache.has(ADMIN_ROLE_ID)) ||
+    (gconf(member.guild?.id).ADMIN_ROLE_ID && member.roles.cache.has(gconf(member.guild?.id).ADMIN_ROLE_ID)) ||
     Object.keys(permsMap).some((k) => hasPermission(member, k))
   );
 }
 
-async function pushLog(msg) {
+/** append transaction to ./database/transactions.json */
+function pushTx(entry) {
   try {
-    if (!ADMIN_LOG_CHANNEL_ID) return;
+    const path = "./database/transactions.json";
+    if (!fs.existsSync(path)) fs.writeFileSync(path, "[]");
+    const txs = JSON.parse(fs.readFileSync(path, "utf8"));
+    txs.push({ ts: new Date().toISOString(), ...entry });
+    fs.writeFileSync(path, JSON.stringify(txs, null, 2));
+  } catch (e) {
+    console.error("pushTx error:", e);
+  }
+}
+
+/** log helper to optional guild log channel */
+async function pushLog(entry) {
+  try {
+    // entry can be string or {guildId, msg}
+    const msg = typeof entry === "string" ? entry : entry.msg;
+    const gid = typeof entry === "string" ? null : entry.guildId;
+
+    const C = gconf(gid || undefined);
+    if (!C.ADMIN_LOG_CHANNEL_ID) return;
+
     const ch =
-      client.channels.cache.get(ADMIN_LOG_CHANNEL_ID) ||
-      (await client.channels.fetch(ADMIN_LOG_CHANNEL_ID).catch(() => null));
+      client.channels.cache.get(C.ADMIN_LOG_CHANNEL_ID) ||
+      (await client.channels.fetch(C.ADMIN_LOG_CHANNEL_ID).catch(() => null));
     if (ch) ch.send(String(msg));
   } catch (e) {
     console.error("pushLog error:", e);
@@ -133,14 +154,14 @@ async function finalizeRegistration(interaction, draft) {
       return interaction.reply?.({ content: `لا يمكن إرسال طلب جديد: **${reason}**`, ephemeral: true });
     }
 
-    const conf = cfg();
+    const C = gconf(interaction.guildId);
     U[id] = {
       name: draft.name,
       country: draft.country,
       age: draft.age,
       birth: draft.birth,
       income: draft.income,
-      rank: existing?.rank || conf.ranks?.[0] || "Bronze",
+      rank: existing?.rank || C.ranks?.[0] || "Bronze",
       balance: existing?.balance ?? 0,
       status: "pending",
       kind: draft.kind,
@@ -157,20 +178,23 @@ async function finalizeRegistration(interaction, draft) {
     }
 
     // Push to review channel
-    client.emit("userRegistered", {
-      id,
-      mention: `<@${id}>`,
-      tag: interaction.user.tag,
-      avatar: interaction.user.displayAvatarURL({ size: 256 }),
-      name: draft.name,
-      country: draft.country,
-      age: draft.age,
-      birth: draft.birth,
-      income: draft.income,
-      status: "pending",
-      kind: draft.kind,
-      faction: draft.kind === "فصيل" ? (draft.faction || "غير محدد") : null,
-    });
+    client.emit("userRegistered",
+      {
+        id,
+        mention: `<@${id}>`,
+        tag: interaction.user.tag,
+        avatar: interaction.user.displayAvatarURL({ size: 256 }),
+        name: draft.name,
+        country: draft.country,
+        age: draft.age,
+        birth: draft.birth,
+        income: draft.income,
+        status: "pending",
+        kind: draft.kind,
+        faction: draft.kind === "فصيل" ? (draft.faction || "غير محدد") : null,
+      },
+      interaction.guildId
+    );
 
     regDraft.delete(id);
   } catch (e) {
@@ -191,7 +215,14 @@ client.on("interactionCreate", async (interaction) => {
       }
       const command = client.commands.get(interaction.commandName);
       if (command) {
-        const context = { cfg, users: loadUsers, saveUsers }; // pass cfg() getter!
+        const context = {
+          gconf,            // per-guild config
+          cfg,              // global config
+          users: loadUsers,
+          saveUsers,
+          pushTx,
+          pushLog,
+        };
         await command.execute(interaction, context);
       }
       return;
@@ -199,14 +230,12 @@ client.on("interactionCreate", async (interaction) => {
 
     /* ======== POST-MODAL FLOW (الحالة/الفصيل) ======== */
 
-    // اختيار الحالة — نحذف القائمة فورًا؛
-    // إذا كانت "فصيل" نظهر قائمة الفصيل، وإلا نُنهِي مباشرةً (auto submit)
+    // اختيار الحالة
     if (interaction.isStringSelectMenu() && interaction.customId === "reg_status_after") {
       const d = regDraft.get(interaction.user.id) || {};
       d.kind = interaction.values?.[0];
       regDraft.set(interaction.user.id, d);
 
-      // fetch current rows (to keep submit as fallback)
       const current = interaction.message.components || [];
       const submitRow = current.find(r =>
         r.components?.some(c => c.customId === "reg_submit_after")
@@ -226,7 +255,7 @@ client.on("interactionCreate", async (interaction) => {
           );
         const rows = [factionRow];
         if (submitRow) rows.push(submitRow);
-        return interaction.update({ components: rows }); // remove الحالة row
+        return interaction.update({ components: rows });
       }
 
       // Not a faction → finalize immediately
@@ -276,10 +305,10 @@ client.on("interactionCreate", async (interaction) => {
         user.status = approved ? "approved" : "rejected";
         saveUsers(users);
 
-        await pushLog(`${approved ? "✅" : "⛔"} ${interaction.user.username} ${approved ? "قبل" : "رفض"} حساب <@${userId}>`);
+        await pushLog({ guildId: interaction.guildId, msg: `${approved ? "✅" : "⛔"} ${interaction.user.username} ${approved ? "قبل" : "رفض"} حساب <@${userId}>` });
 
-        // In review channel: edit card & clean older bot cards
-        if (interaction.channelId === ADMIN_CHANNEL_ID) {
+        const C = gconf(interaction.guildId);
+        if (interaction.channelId === C.ADMIN_CHANNEL_ID) {
           await interaction.update({
             content: `${approved ? "✅" : "⛔"} تم ${approved ? "قبول" : "رفض"} طلب فتح الحساب لـ ${user.name} (${userId})`,
             components: [],
@@ -311,9 +340,9 @@ client.on("interactionCreate", async (interaction) => {
       if (action === "promote") {
         if (!hasPermission(interaction.member, "promote"))
           return interaction.reply({ content: "لا تملك صلاحية هذا الإجراء.", ephemeral: true });
-        const { ranks } = cfg();
+        const C = gconf(interaction.guildId);
         const rankRow = new ActionRowBuilder().addComponents(
-          ranks.map((rankName) =>
+          C.ranks.map((rankName) =>
             new ButtonBuilder()
               .setCustomId(`setrank_${userId}_${rankName}`)
               .setLabel(rankName)
@@ -343,7 +372,7 @@ client.on("interactionCreate", async (interaction) => {
         const modal = new ModalBuilder().setCustomId(`addBalanceModal_${userId}`).setTitle("إضافة رصيد");
         const amountInput = new TextInputBuilder()
           .setCustomId("amount")
-          .setLabel(`المبلغ (${CURRENCY_SYMBOL})`)
+          .setLabel(`المبلغ (${gconf(interaction.guildId).CURRENCY_SYMBOL})`)
           .setStyle(TextInputStyle.Short)
           .setRequired(true);
         modal.addComponents(new ActionRowBuilder().addComponents(amountInput));
@@ -389,7 +418,7 @@ client.on("interactionCreate", async (interaction) => {
       if (isNaN(amount) || amount <= 0) return interaction.reply({ content: "رجاءً أدخل مبلغًا صالحًا أكبر من 0.", ephemeral: true });
       user.balance = (user.balance || 0) + amount;
       saveUsers(users);
-      return interaction.reply({ content: `✅ تم إضافة ${amount}${CURRENCY_SYMBOL} إلى <@${userId}>`, ephemeral: true });
+      return interaction.reply({ content: `✅ تم إضافة ${amount}${gconf(interaction.guildId).CURRENCY_SYMBOL} إلى <@${userId}>`, ephemeral: true });
     }
 
     /* ---- Fees modal ---- */
@@ -405,9 +434,9 @@ client.on("interactionCreate", async (interaction) => {
             return interaction.reply({ content: "يجب أن تكون الرسوم بين 0 و 100.", ephemeral: true });
           }
         }
-        const conf = cfg();
-        conf.fees = { DEPOSIT_FEE: dep, TRANSFER_FEE: trn, WITHDRAW_FEE: wdr };
-        fs.writeFileSync("./config.json", JSON.stringify(conf, null, 2));
+        const C = cfg();
+        C.fees = { DEPOSIT_FEE: dep, TRANSFER_FEE: trn, WITHDRAW_FEE: wdr };
+        fs.writeFileSync("./config.json", JSON.stringify(C, null, 2));
         return interaction.reply({ content: `تم تحديث الرسوم: إيداع ${dep}% • تحويل ${trn}% • سحب ${wdr}%`, ephemeral: true });
       } catch (e) {
         console.error("فشل تحديث الرسوم:", e);
@@ -415,10 +444,11 @@ client.on("interactionCreate", async (interaction) => {
       }
     }
 
-    /* ---- Register modal: collect form, then show الحالة (and possibly الفصيل) ---- */
+    /* ---- Register modal: collect form, then show الحالة/الفصيل ---- */
     if (interaction.isModalSubmit() && interaction.customId === "registerModal") {
-      if (REGISTER_CHANNEL_ID && interaction.channelId !== REGISTER_CHANNEL_ID) {
-        return interaction.reply({ content: `يمكن إرسال طلب التسجيل فقط من داخل <#${REGISTER_CHANNEL_ID}>.`, ephemeral: true });
+      const C = gconf(interaction.guildId);
+      if (C.REGISTER_CHANNEL_ID && interaction.channelId !== C.REGISTER_CHANNEL_ID) {
+        return interaction.reply({ content: `يمكن إرسال طلب التسجيل فقط من داخل <#${C.REGISTER_CHANNEL_ID}>.`, ephemeral: true });
       }
       try {
         const name = interaction.fields.getTextInputValue("name").trim();
@@ -431,15 +461,12 @@ client.on("interactionCreate", async (interaction) => {
             !/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(birth) || !Number.isFinite(income) || income <= 0) {
           return interaction.reply({ content: "رجاءً أدخل بيانات تسجيل صحيحة.", ephemeral: true });
         }
-        const conf = cfg();
-        if (income < (conf.MIN_DEPOSIT || 0)) {
-          return interaction.reply({ content: `الحد الأدنى للدخل هو ${conf.MIN_DEPOSIT} ${conf.CURRENCY_SYMBOL}.`, ephemeral: true });
+        if (income < (C.MIN_DEPOSIT || 0)) {
+          return interaction.reply({ content: `الحد الأدنى للدخل هو ${C.MIN_DEPOSIT} ${C.CURRENCY_SYMBOL}.`, ephemeral: true });
         }
 
-        // stash draft
         regDraft.set(interaction.user.id, { name, country, age, birth, income });
 
-        // الحالة
         const statusSelect = new StringSelectMenuBuilder()
           .setCustomId("reg_status_after")
           .setPlaceholder("اختر الحالة")
@@ -449,7 +476,6 @@ client.on("interactionCreate", async (interaction) => {
             { label: "فصيل", value: "فصيل" }
           );
 
-        // زر احتياطي
         const confirmBtn = new ButtonBuilder()
           .setCustomId("reg_submit_after")
           .setLabel("إرسال الطلب")
@@ -473,19 +499,19 @@ client.on("interactionCreate", async (interaction) => {
   }
 });
 
-/* ===== Send review card on register — only two buttons (Approve/Reject) ===== */
-client.on("userRegistered", async (user) => {
+/* ===== Send review card on register (per-guild channel) ===== */
+client.on("userRegistered", async (user, guildId) => {
   try {
+    const C = gconf(guildId);
     const reviewChannel =
-      client.channels.cache.get(ADMIN_CHANNEL_ID) ||
-      (await client.channels.fetch?.(ADMIN_CHANNEL_ID).catch(() => null));
+      client.channels.cache.get(C.ADMIN_CHANNEL_ID) ||
+      (await client.channels.fetch?.(C.ADMIN_CHANNEL_ID).catch(() => null));
     if (!reviewChannel) {
-      console.warn("[review] channel not found", ADMIN_CHANNEL_ID);
-      await pushLog(`⚠️ لم أستطع إيجاد قناة المراجعة (ID: ${ADMIN_CHANNEL_ID}).`);
+      console.warn("[review] channel not found", C.ADMIN_CHANNEL_ID);
+      await pushLog({ guildId, msg: `⚠️ لم أستطع إيجاد قناة المراجعة (ID: ${C.ADMIN_CHANNEL_ID}).` });
       return;
     }
 
-    // ensure text-capable
     if (
       ![
         ChannelType.GuildText,
@@ -494,14 +520,14 @@ client.on("userRegistered", async (user) => {
         ChannelType.GuildAnnouncement,
       ].includes(reviewChannel.type)
     ) {
-      await pushLog(`⚠️ القناة (${ADMIN_CHANNEL_ID}) ليست قناة نصية صالحة للإرسال.`);
+      await pushLog({ guildId, msg: `⚠️ القناة (${C.ADMIN_CHANNEL_ID}) ليست قناة نصية صالحة للإرسال.` });
       return;
     }
 
     const me = reviewChannel.guild?.members?.me;
     const perms = me ? reviewChannel.permissionsFor(me) : null;
     if (!perms?.has(PermissionFlagsBits.ViewChannel) || !perms?.has(PermissionFlagsBits.SendMessages)) {
-      await pushLog("⚠️ لا أملك صلاحية عرض/إرسال في قناة المراجعة.");
+      await pushLog({ guildId, msg: "⚠️ لا أملك صلاحية عرض/إرسال في قناة المراجعة." });
       return;
     }
 
@@ -515,7 +541,7 @@ client.on("userRegistered", async (user) => {
         { name: "البلد", value: String(user.country || "—"), inline: true },
         { name: "العمر", value: String(user.age ?? "—"), inline: true },
         { name: "تاريخ الميلاد", value: String(user.birth || "—"), inline: true },
-        { name: "الدخل الشهري", value: `${user.income ?? 0} ${CURRENCY_SYMBOL}`, inline: true },
+        { name: "الدخل الشهري", value: `${user.income ?? 0} ${C.CURRENCY_SYMBOL}`, inline: true },
         { name: "الحالة", value: String(user.kind || "مدني"), inline: true },
         { name: "الفصيل", value: String(user.faction || "—"), inline: true },
         { name: "ID", value: String(user.id), inline: false }

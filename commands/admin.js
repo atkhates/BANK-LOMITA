@@ -1,4 +1,3 @@
-// commands/admin.js
 const {
   SlashCommandBuilder,
   EmbedBuilder,
@@ -18,12 +17,11 @@ module.exports = {
     ),
 
   async execute(interaction, ctx) {
-    // ctx.cfg may be a function OR an object depending on index.js
     const conf = typeof ctx?.cfg === "function"
       ? ctx.cfg()
       : (ctx?.cfg || require("../config.json"));
 
-    const loadUsers = ctx.users; // your loader
+    const loadUsers = ctx.users;
     const target = interaction.options.getUser("target") || interaction.user;
     const U = loadUsers();
     const record = U[target.id];

@@ -1,5 +1,3 @@
-// commands/register.js — يفتح نموذج التسجيل
-
 const {
   SlashCommandBuilder,
   ModalBuilder,
