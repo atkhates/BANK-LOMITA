@@ -13,7 +13,6 @@ function writeAll(obj) {
   fs.writeFileSync(PATH, JSON.stringify(obj, null, 2));
 }
 function defaults() {
-  // read global defaults from config.json if present
   try {
     const c = require("./config.json");
     return {
@@ -21,9 +20,25 @@ function defaults() {
       MIN_DEPOSIT: c.MIN_DEPOSIT || 50000,
       ranks: c.ranks || ["Bronze", "Silver", "Gold"],
       fees: c.fees || { DEPOSIT_FEE: 0, TRANSFER_FEE: 0, WITHDRAW_FEE: 0 },
+      // optional keys will simply be undefined unless set via /setup:
+      REGISTER_CHANNEL_ID: c.REGISTER_CHANNEL_ID || "",
+      ADMIN_CHANNEL_ID: c.ADMIN_CHANNEL_ID || "",
+      ADMIN_LOG_CHANNEL_ID: c.ADMIN_LOG_CHANNEL_ID || "",
+      TX_CHANNEL_ID: "",          // << new; set via /setup
+      ADMIN_ROLE_ID: c.ADMIN_ROLE_ID || "",
     };
   } catch {
-    return { CURRENCY_SYMBOL: "$", MIN_DEPOSIT: 50000, ranks: ["Bronze", "Silver", "Gold"], fees: { DEPOSIT_FEE: 0, TRANSFER_FEE: 0, WITHDRAW_FEE: 0 } };
+    return {
+      CURRENCY_SYMBOL: "$",
+      MIN_DEPOSIT: 50000,
+      ranks: ["Bronze", "Silver", "Gold"],
+      fees: { DEPOSIT_FEE: 0, TRANSFER_FEE: 0, WITHDRAW_FEE: 0 },
+      REGISTER_CHANNEL_ID: "",
+      ADMIN_CHANNEL_ID: "",
+      ADMIN_LOG_CHANNEL_ID: "",
+      TX_CHANNEL_ID: "",
+      ADMIN_ROLE_ID: "",
+    };
   }
 }
 
