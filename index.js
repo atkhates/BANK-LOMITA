@@ -579,4 +579,21 @@ client.on("userRegistered", async (user) => {
   }
 });
 
-client.login(process.env.TOKEN);
+const token = process.env.TOKEN;
+
+if (!token || token.trim() === '') {
+  console.error('❌ ERROR: Discord bot TOKEN is missing or empty!');
+  console.error('Please set your Discord bot TOKEN in the deployment configuration:');
+  console.error('1. Go to the Deployments pane');
+  console.error('2. Click on Configuration tab');
+  console.error('3. Add a secret named "TOKEN" with your Discord bot token');
+  console.error('4. Get your token from: https://discord.com/developers/applications');
+  process.exit(1);
+}
+
+console.log('🔐 Attempting to login to Discord...');
+client.login(token).catch(err => {
+  console.error('❌ Failed to login to Discord:', err.message);
+  console.error('Please verify your TOKEN is valid in the Discord Developer Portal');
+  process.exit(1);
+});
