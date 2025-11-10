@@ -135,4 +135,70 @@ async function syncUsers(allUsersObj) {
   });
 }
 
-module.exports = { upsertUser, syncUsers };
+async function logTx(entry) {
+  try {
+    await init();
+    const { data } = await sheets.spreadsheets.get({ spreadsheetId: sheetId });
+    const sheetNames = data.sheets.map(s => s.properties.title);
+    
+    if (!sheetNames.includes('Transactions')) {
+      await sheets.spreadsheets.batchUpdate({
+        spreadsheetId: sheetId,
+        requestBody: {
+          requests: [{
+            addSheet: {
+              properties: {
+                title: 'Transactions'
+              }
+            }
+          }]
+        }
+      });
+    }
+    
+    const header = ['timestamp', 'type', 'from', 'to', 'amount', 'reason', 'admin'];
+    try {
+      const { data: headerData } = await sheets.spreadsheets.values.get({
+        spreadsheetId: sheetId,
+        range: 'Transactions!A1:G1',
+      });
+      if (!headerData.values || headerData.values.length === 0) {
+        await sheets.spreadsheets.values.update({
+          spreadsheetId: sheetId,
+          range: 'Transactions!A1:G1',
+          valueInputOption: 'RAW',
+          requestBody: { values: [header] },
+        });
+      }
+    } catch (e) {}
+    
+    await sheets.spreadsheets.values.append({
+      spreadsheetId: sheetId,
+      range: 'Transactions!A2',
+      valueInputOption: 'RAW',
+      requestBody: {
+        values: [[
+          entry.ts || new Date().toISOString(),
+          entry.type || '',
+          entry.from || '',
+          entry.to || '',
+          entry.amount || 0,
+          entry.reason || '',
+          entry.admin || ''
+        ]]
+      }
+    });
+  } catch (e) {
+    console.error('Error logging transaction to sheets:', e.message);
+  }
+}
+
+async function onUserChange(userId) {
+  try {
+    await upsertUser({ id: userId });
+  } catch (e) {
+    console.error('Error on user change:', e.message);
+  }
+}
+
+module.exports = { upsertUser, syncUsers, logTx, onUserChange };
