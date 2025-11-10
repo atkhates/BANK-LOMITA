@@ -602,17 +602,8 @@ client.on("userRegistered", async (user, guildId) => {
       new ButtonBuilder().setCustomId(`approve_${user.id}`).setLabel("موافقة").setStyle(ButtonStyle.Success),
       new ButtonBuilder().setCustomId(`reject_${user.id}`).setLabel("رفض").setStyle(ButtonStyle.Danger),
     );
-    const row2 = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId(`addBalance_${user.id}`).setLabel("إضافة رصيد").setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId(`withdraw_${user.id}`).setLabel("سحب").setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId(`promote_${user.id}`).setLabel("ترقية").setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId(`fees`).setLabel("تعديل الرسوم").setStyle(ButtonStyle.Secondary),
-    );
-    const row3 = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId(`${user.frozen ? "unfreeze" : "freeze"}_${user.id}`).setLabel(user.frozen ? "إلغاء تجميد" : "تجميد").setStyle(ButtonStyle.Secondary),
-    );
 
-    await reviewChannel.send({ embeds: [embed], components: [row1, row2, row3] });
+    await reviewChannel.send({ embeds: [embed], components: [row1] });
   } catch (e) {
     console.error("userRegistered send error:", e);
   }

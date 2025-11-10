@@ -193,9 +193,10 @@ async function logTx(entry) {
   }
 }
 
-async function onUserChange(userId) {
+async function onUserChange(userData) {
   try {
-    await upsertUser({ id: userId });
+    if (!userData || !userData.id) return;
+    await upsertUser(userData);
   } catch (e) {
     console.error('Error on user change:', e.message);
   }
