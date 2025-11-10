@@ -60,6 +60,6 @@ module.exports = {
       new ButtonBuilder().setCustomId(`blacklist_${target.id}`).setLabel("قائمة سوداء").setStyle(ButtonStyle.Danger)
     ));
 
-    await interaction.reply({ embeds:[embed], components:rows, ephemeral:true });
+    await interaction.reply({ embeds:[embed], components:rows, flags: 64 });
   }
 };

@@ -220,6 +220,9 @@ client.on("interactionCreate", async (interaction) => {
         if (target.status !== "pending")
           return interaction.reply({ content: `لا يمكن تنفيذ هذا الإجراء لأن الحالة الحالية هي **${target.status}**.`, flags: 64 });
 
+        // Defer to prevent timeout
+        await interaction.deferUpdate();
+
         const approved = (action === "approve");
         target.status = approved ? "approved" : "rejected";
         saveUsers(users);
@@ -228,11 +231,7 @@ client.on("interactionCreate", async (interaction) => {
 
         await pushLog(interaction.guildId, `${approved ? "✅" : "⛔"} ${interaction.user.username} ${approved ? "قبل" : "رفض"} حساب <@${userId}>`);
 
-        if (interaction.channelId === gconf.ADMIN_CHANNEL_ID) {
-          await interaction.update({ content: `${approved ? "✅ تمت الموافقة" : "⛔ تم الرفض"} على طلب **${target.name}** (${userId})`, components: [] });
-        } else {
-          await interaction.reply({ content: "تمت العملية.", flags: 64 });
-        }
+        await interaction.editReply({ content: `${approved ? "✅ تمت الموافقة" : "⛔ تم الرفض"} على طلب **${target.name}** (${userId})`, components: [] });
         return;
       }
 
