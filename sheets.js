@@ -16,24 +16,61 @@ async function init() {
   initialized = true;
 }
 
+async function ensureUsersSheet() {
+  await init();
+  
+  // Check if "Users" sheet exists
+  try {
+    const { data } = await sheets.spreadsheets.get({ spreadsheetId: sheetId });
+    const sheetNames = data.sheets.map(s => s.properties.title);
+    
+    if (!sheetNames.includes('Users')) {
+      console.log('Creating "Users" sheet...');
+      await sheets.spreadsheets.batchUpdate({
+        spreadsheetId: sheetId,
+        requestBody: {
+          requests: [{
+            addSheet: {
+              properties: {
+                title: 'Users'
+              }
+            }
+          }]
+        }
+      });
+      console.log('✅ "Users" sheet created');
+    }
+  } catch (e) {
+    console.error('Error ensuring Users sheet:', e.message);
+    throw e;
+  }
+}
+
 async function ensureHeader() {
   await init();
+  await ensureUsersSheet();
+  
   // Read first row
-  const { data } = await sheets.spreadsheets.values.get({
-    spreadsheetId: sheetId,
-    range: 'Users!A1:M1',
-    valueRenderOption: 'UNFORMATTED_VALUE',
-  });
-  const need = ['id','name','country','age','birth','income','rank','balance','status','kind','faction','createdAt','updatedAt'];
-  const have = (data.values && data.values[0]) || [];
-  if (need.every((h, i) => have[i] === h)) return;
+  try {
+    const { data } = await sheets.spreadsheets.values.get({
+      spreadsheetId: sheetId,
+      range: 'Users!A1:M1',
+      valueRenderOption: 'UNFORMATTED_VALUE',
+    });
+    const need = ['id','name','country','age','birth','income','rank','balance','status','kind','faction','createdAt','updatedAt'];
+    const have = (data.values && data.values[0]) || [];
+    if (need.every((h, i) => have[i] === h)) return;
 
-  await sheets.spreadsheets.values.update({
-    spreadsheetId: sheetId,
-    range: 'Users!A1:M1',
-    valueInputOption: 'RAW',
-    requestBody: { values: [need] },
-  });
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: sheetId,
+      range: 'Users!A1:M1',
+      valueInputOption: 'RAW',
+      requestBody: { values: [need] },
+    });
+  } catch (e) {
+    console.error('Error setting header:', e.message);
+    throw e;
+  }
 }
 
 async function upsertUser(row) {
