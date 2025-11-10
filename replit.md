@@ -68,6 +68,11 @@ index.js (Main Hub)
   - Safely wrapped: if unavailable, bot uses no-op methods
   - Syncs users and transactions in real-time
   - Auto-creates "Users" and "Transactions" sheets
+  - **NEW:** Automatically adds total balance summary row with:
+    - Total of all user balances
+    - User count
+    - Last sync timestamp
+    - Bold formatting with border separator
 
 **Command Registration:**
 - `deploy-commands.js` - Registers slash commands with Discord API
@@ -165,7 +170,12 @@ node deploy-commands.js
 6. Admin approves or rejects
 
 ## Recent Changes
-- **2025-11-10**: Comprehensive logging system and data restore
+- **2025-11-10**: Comprehensive logging system, data restore, and balance tracking
+  - **Google Sheets total balance** - Users sheet now automatically shows:
+    - Summary row at bottom with total balance of all users
+    - User count display
+    - Last sync timestamp
+    - Professional formatting (bold text, gray background, top border)
   - **Complete admin log coverage** - EVERYTHING now logs to the admin log channel:
     - All admin actions (approve/reject, freeze, blacklist, edit info, fee changes)
     - All financial transactions (admin deposits/withdrawals, user transfers/withdrawals)

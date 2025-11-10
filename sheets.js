@@ -125,14 +125,90 @@ async function syncUsers(allUsersObj) {
 
   if (!rows.length) return;
 
+  // Calculate total balance
+  const totalBalance = Object.values(allUsersObj).reduce((sum, user) => sum + (user.balance || 0), 0);
+  const userCount = rows.length;
+
+  // Clear existing data
   await sheets.spreadsheets.values.clear({
     spreadsheetId: sheetId, range: 'Users!A2:M'
   });
+  
+  // Add user data
   await sheets.spreadsheets.values.append({
     spreadsheetId: sheetId, range: 'Users!A2',
     valueInputOption: 'RAW',
     requestBody: { values: rows }
   });
+
+  // Add summary row with total balance
+  const summaryRow = [
+    '',
+    `📊 TOTAL (${userCount} users)`,
+    '',
+    '',
+    '',
+    '',
+    '',
+    totalBalance,
+    '',
+    '',
+    '',
+    '',
+    new Date().toISOString()
+  ];
+
+  await sheets.spreadsheets.values.append({
+    spreadsheetId: sheetId,
+    range: 'Users!A2',
+    valueInputOption: 'RAW',
+    requestBody: { values: [summaryRow] }
+  });
+
+  // Format the summary row (make it bold and add a border)
+  try {
+    const lastRow = userCount + 2; // +2 because row 1 is header, users start at row 2
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId: sheetId,
+      requestBody: {
+        requests: [
+          {
+            repeatCell: {
+              range: {
+                sheetId: 0,
+                startRowIndex: lastRow,
+                endRowIndex: lastRow + 1,
+                startColumnIndex: 0,
+                endColumnIndex: 13
+              },
+              cell: {
+                userEnteredFormat: {
+                  backgroundColor: { red: 0.95, green: 0.95, blue: 0.95 },
+                  textFormat: { bold: true },
+                  horizontalAlignment: 'LEFT'
+                }
+              },
+              fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)'
+            }
+          },
+          {
+            updateBorders: {
+              range: {
+                sheetId: 0,
+                startRowIndex: lastRow,
+                endRowIndex: lastRow + 1,
+                startColumnIndex: 0,
+                endColumnIndex: 13
+              },
+              top: { style: 'SOLID_THICK' }
+            }
+          }
+        ]
+      }
+    });
+  } catch (e) {
+    console.error('Error formatting summary row:', e.message);
+  }
 }
 
 async function logTx(entry) {
