@@ -1,3 +1,4 @@
+// commands/admin.js
 const {
   SlashCommandBuilder,
   EmbedBuilder,
@@ -5,6 +6,7 @@ const {
   ButtonBuilder,
   ButtonStyle,
 } = require("discord.js");
+const GC = require("../guildConfig"); // per-guild config (REGISTER/REVIEW/LOG/ADMIN_CHAT/ADMIN_ROLE)
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -16,29 +18,43 @@ module.exports = {
         .setRequired(false)
     ),
 
+  /**
+   * @param {import('discord.js').ChatInputCommandInteraction} interaction
+   * @param {{ cfg?: any, users: Function }} ctx
+   */
   async execute(interaction, ctx) {
-    const conf = typeof ctx?.cfg === "function"
-      ? ctx.cfg()
-      : (ctx?.cfg || require("../config.json"));
+    // ---- Resolve configuration (per-guild with global fallback) ----
+    const gid = interaction.guildId;
+    const gConf = GC.get(gid); // from guildConfigs.json (set via /setup)
+    const baseConf =
+      typeof ctx?.cfg === "function"
+        ? ctx.cfg()
+        : (ctx?.cfg || require("../config.json"));
 
-    const loadUsers = ctx.users;
+    // ADMIN_CHAT channel id (guild-specific preferred, fallback to global config if set)
+    const ADMIN_CHAT_CHANNEL_ID = gConf.ADMIN_CHAT_CHANNEL_ID || baseConf.ADMIN_CHAT_CHANNEL_ID || "";
+
+    // ---- Resolve target user and user record ----
     const target = interaction.options.getUser("target") || interaction.user;
-    const U = loadUsers();
-    const record = U[target.id];
+    const users = typeof ctx?.users === "function" ? ctx.users() : {};
+    const record = users[target.id];
 
+    // Compose display data (fill defaults if no record)
     const data = record || {
       name: target.username,
       country: "—",
       age: "—",
       birth: "—",
       income: 0,
-      rank: conf.ranks?.[0] || "Bronze",
+      rank: baseConf.ranks?.[0] || "Bronze",
       balance: 0,
       status: "no-record",
       kind: "—",
       faction: "—",
+      frozen: false,
     };
 
+    // ---- Build embed ----
     const embed = new EmbedBuilder()
       .setColor(0x2b2d31)
       .setTitle("مراجعة المستخدم")
@@ -58,7 +74,9 @@ module.exports = {
         { name: "ID", value: target.id, inline: false },
       );
 
+    // ---- Build action rows ----
     const rows = [];
+
     if (record && record.status === "pending") {
       rows.push(
         new ActionRowBuilder().addComponents(
@@ -67,6 +85,7 @@ module.exports = {
         )
       );
     }
+
     rows.push(
       new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId(`addBalance_${target.id}`).setLabel("إضافة رصيد").setStyle(ButtonStyle.Success),
@@ -74,6 +93,7 @@ module.exports = {
         new ButtonBuilder().setCustomId(`fees`).setLabel("تعديل الرسوم").setStyle(ButtonStyle.Secondary),
       )
     );
+
     rows.push(
       new ActionRowBuilder().addComponents(
         new ButtonBuilder()
@@ -84,6 +104,14 @@ module.exports = {
       )
     );
 
-    await interaction.reply({ embeds: [embed], components: rows, ephemeral: true });
+    // ---- Visibility rule:
+    // In ADMIN_CHAT channel -> public; elsewhere -> ephemeral
+    const isAdminChat = ADMIN_CHAT_CHANNEL_ID && interaction.channelId === ADMIN_CHAT_CHANNEL_ID;
+
+    await interaction.reply({
+      embeds: [embed],
+      components: rows,
+      ephemeral: !isAdminChat,
+    });
   },
 };
