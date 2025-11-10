@@ -170,7 +170,12 @@ node deploy-commands.js
 6. Admin approves or rejects
 
 ## Recent Changes
-- **2025-11-10**: Comprehensive logging system, data restore, and balance tracking
+- **2025-11-10**: Comprehensive logging system, data restore, and bidirectional Google Sheets sync
+  - **NEW: Bidirectional Google Sheets sync** - You can now:
+    - Manually edit user data in Google Sheets
+    - Use `/sync` command to pull changes into the bot
+    - Edit balances, names, countries, ages, etc. directly in Sheets
+    - Changes sync automatically to users.json
   - **Google Sheets total balance** - Users sheet now automatically shows:
     - Summary row at bottom with total balance of all users
     - User count display
@@ -181,7 +186,8 @@ node deploy-commands.js
     - All financial transactions (admin deposits/withdrawals, user transfers/withdrawals)
     - Data restore operations
   - **Implemented blacklist functionality** - Admins can now blacklist users via /admin panel
-  - **Added /restore command** - Restore all user data from Google Sheets backup
+  - **Added /restore command** - Restore all user data from Google Sheets backup (one-time recovery)
+  - **Added /sync command** - Sync changes from Google Sheets to bot database (ongoing updates)
   - **Dual logging system**:
     - Admin log channel: Text summaries of all activities
     - Transaction log channel: Beautiful embeds for financial transactions only
