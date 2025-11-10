@@ -363,6 +363,21 @@ client.on("interactionCreate", async (interaction) => {
         );
         return interaction.showModal(modal);
       }
+
+      // Blacklist user
+      if (action === "blacklist") {
+        if (!hasPermission(interaction.member, "blacklist", gconf))
+          return interaction.reply({ content: "لا تملك صلاحية هذا الإجراء.", flags: 64 });
+        if (!target) return interaction.reply({ content: "لم يتم العثور على سجل المستخدم.", flags: 64 });
+        
+        target.status = "blacklisted";
+        target.frozen = true;
+        saveUsers(users);
+        await Sheets.onUserChange?.({ id: userId, ...target }).catch(() => {});
+        await interaction.reply({ content: `⛔ تم إضافة <@${userId}> إلى القائمة السوداء.`, flags: 64 });
+        await pushLog(interaction.guildId, `⛔ <@${interaction.user.id}> أضاف <@${userId}> إلى القائمة السوداء`);
+        return;
+      }
     }
 
     // ====== Modals ======
@@ -398,6 +413,7 @@ client.on("interactionCreate", async (interaction) => {
         .setTimestamp();
       
       logTransaction(interaction.guildId, depositEmbed);
+      await pushLog(interaction.guildId, `💰 <@${interaction.user.id}> أضاف ${amount}${gconf.CURRENCY_SYMBOL || "$"} إلى حساب <@${userId}>. الرصيد الجديد: ${user.balance}${gconf.CURRENCY_SYMBOL || "$"}`);
 
       await interaction.reply({ content: `✅ تم إضافة ${amount}${gconf.CURRENCY_SYMBOL || "$"} إلى <@${userId}>. الرصيد: ${user.balance}${gconf.CURRENCY_SYMBOL || "$"}`, flags: 64 });
       return;
@@ -444,6 +460,7 @@ client.on("interactionCreate", async (interaction) => {
         .setTimestamp();
       
       logTransaction(interaction.guildId, withdrawEmbed);
+      await pushLog(interaction.guildId, `💸 <@${interaction.user.id}> سحب ${amount}${gconf.CURRENCY_SYMBOL || "$"} من حساب <@${userId}> (رسوم: ${fee}${gconf.CURRENCY_SYMBOL || "$"}). الرصيد المتبقي: ${user.balance}${gconf.CURRENCY_SYMBOL || "$"}`);
 
       await interaction.reply({ content: `✅ تم سحب ${amount}${gconf.CURRENCY_SYMBOL || "$"} من <@${userId}> (رسم: ${fee}${gconf.CURRENCY_SYMBOL || "$"}). الرصيد الحالي: ${user.balance}${gconf.CURRENCY_SYMBOL || "$"}`, flags: 64 });
       return;
@@ -463,6 +480,7 @@ client.on("interactionCreate", async (interaction) => {
         }
       }
       GC.patch(interaction.guildId, { fees: { DEPOSIT_FEE: dep, TRANSFER_FEE: trn, WITHDRAW_FEE: wdr } });
+      await pushLog(interaction.guildId, `💵 <@${interaction.user.id}> قام بتحديث الرسوم: إيداع ${dep}% • تحويل ${trn}% • سحب ${wdr}%`);
       return interaction.reply({ content: `تم تحديث الرسوم: إيداع ${dep}% • تحويل ${trn}% • سحب ${wdr}%`, flags: 64 });
     }
 

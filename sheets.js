@@ -202,4 +202,49 @@ async function onUserChange(userData) {
   }
 }
 
-module.exports = { upsertUser, syncUsers, logTx, onUserChange };
+async function restoreUsersFromSheet() {
+  await init();
+  await ensureHeader();
+
+  try {
+    const { data } = await sheets.spreadsheets.values.get({
+      spreadsheetId: sheetId,
+      range: 'Users!A2:M',
+      valueRenderOption: 'UNFORMATTED_VALUE',
+    });
+
+    if (!data.values || data.values.length === 0) {
+      return { success: false, message: 'No users found in Google Sheets', count: 0 };
+    }
+
+    const users = {};
+    data.values.forEach(row => {
+      const [id, name, country, age, birth, income, rank, balance, status, kind, faction, createdAt, updatedAt] = row;
+      if (id) {
+        users[String(id)] = {
+          id: String(id),
+          name: name || '',
+          country: country || '',
+          age: age || 0,
+          birth: birth || '',
+          income: income || 0,
+          rank: rank || '',
+          balance: balance || 0,
+          status: status || '',
+          kind: kind || '',
+          faction: faction || '',
+          createdAt: createdAt || '',
+          updatedAt: updatedAt || new Date().toISOString(),
+          _daily: {}
+        };
+      }
+    });
+
+    return { success: true, users, count: Object.keys(users).length };
+  } catch (e) {
+    console.error('Error restoring users from sheets:', e.message);
+    return { success: false, message: e.message, count: 0 };
+  }
+}
+
+module.exports = { upsertUser, syncUsers, logTx, onUserChange, restoreUsersFromSheet };

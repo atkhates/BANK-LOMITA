@@ -7,7 +7,7 @@ module.exports = {
     .setDescription("سحب رصيد من حسابك")
     .addIntegerOption(o => o.setName("amount").setDescription("المبلغ").setRequired(true)),
 
-  async execute(interaction, { gconf, users, saveUsers, pushTx, logTransaction }) {
+  async execute(interaction, { gconf, users, saveUsers, pushTx, logTransaction, pushLog }) {
     const g = gconf();
     const uid = interaction.user.id;
     const amount = interaction.options.getInteger("amount");
@@ -47,6 +47,7 @@ module.exports = {
       .setTimestamp();
     
     logTransaction(interaction.guildId, embed);
+    await pushLog(interaction.guildId, `💰 <@${uid}> سحب ${amount}${g.CURRENCY_SYMBOL} (رسوم ${fee}${g.CURRENCY_SYMBOL}). الرصيد المتبقي: ${A.balance}${g.CURRENCY_SYMBOL}`);
 
     return interaction.reply({ content:`💸 تم سحب ${amount}${g.CURRENCY_SYMBOL} (رسوم ${fee}).`, flags: 64 });
   }

@@ -98,22 +98,30 @@ Use the `/setup` command to configure all channels for your server:
 
 **Optional Channels:**
 - `reglist_channel` - Channel showing registration statistics summary
-- `log_channel` - Channel for admin action logs (approvals, edits, etc.)
-- `transaction_log_channel` - **NEW!** Channel for all financial transactions (transfers, withdrawals, deposits)
+- `log_channel` - **Admin activity log** - All admin actions and user transactions
+- `transaction_log_channel` - **Detailed transaction embeds** - Beautiful formatted transaction logs
 - `admin_role` - Role ID for administrators
 
-**Transaction Log Features:**
-The transaction log channel will automatically display:
-- 💸 **User Transfers** - When users transfer money to each other
-- 💰 **User Withdrawals** - When users withdraw from their accounts
-- ➕ **Admin Deposits** - When admins add balance to accounts
-- ➖ **Admin Withdrawals** - When admins withdraw from accounts
+**Admin Log Channel (log_channel):**
+This channel logs EVERYTHING that happens in the bot:
+- ✅ User registration approvals/rejections
+- 📈 Rank changes
+- 🧊 Account freeze/unfreeze
+- ⛔ Blacklist actions
+- ✏️ User information edits
+- 💵 Fee changes
+- 💰 Admin deposits
+- 💸 Admin withdrawals
+- 💸 User transfers
+- 💰 User withdrawals
+- 📥 Data restores from Google Sheets
 
-Each transaction log includes:
-- User names and mentions
-- Amount, fees, and totals
-- Remaining balance
-- Timestamp
+**Transaction Log Channel (transaction_log_channel):**
+Shows detailed embeds for financial transactions only:
+- 💸 **User Transfers** - Sender, receiver, amount, fees, remaining balance
+- 💰 **User Withdrawals** - User, amount, fees, remaining balance
+- ➕ **Admin Deposits** - Admin, recipient, amount, new balance
+- ➖ **Admin Withdrawals** - Admin, user, amount, fees, remaining balance
 
 **Other Configuration:**
 - `CURRENCY_SYMBOL` - Currency symbol (default: $)
@@ -157,14 +165,16 @@ node deploy-commands.js
 6. Admin approves or rejects
 
 ## Recent Changes
-- **2025-11-10**: Transaction logging and complete integration
-  - **Added transaction log channel feature** - All financial transactions now log to a dedicated channel
-    - User transfers (💸) with sender, receiver, amount, fees, and remaining balance
-    - User withdrawals (💰) with amount, fees, and remaining balance  
-    - Admin deposits (➕) with admin, recipient, and new balance
-    - Admin withdrawals (➖) with admin, user, amount, fees, and remaining balance
-  - All transactions display in beautiful embeds with color coding
-  - Configurable via `/setup` command with `transaction_log_channel` parameter
+- **2025-11-10**: Comprehensive logging system and data restore
+  - **Complete admin log coverage** - EVERYTHING now logs to the admin log channel:
+    - All admin actions (approve/reject, freeze, blacklist, edit info, fee changes)
+    - All financial transactions (admin deposits/withdrawals, user transfers/withdrawals)
+    - Data restore operations
+  - **Implemented blacklist functionality** - Admins can now blacklist users via /admin panel
+  - **Added /restore command** - Restore all user data from Google Sheets backup
+  - **Dual logging system**:
+    - Admin log channel: Text summaries of all activities
+    - Transaction log channel: Beautiful embeds for financial transactions only
   - Fixed all interaction timeout errors by adding `deferUpdate()` and `deferReply()`
   - Replaced all deprecated `ephemeral: true` with `flags: 64` across all files
   - Updated event handler from `ready` to `clientReady` for Discord.js v14 compatibility

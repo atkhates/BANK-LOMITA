@@ -8,7 +8,7 @@ module.exports = {
     .addUserOption(o => o.setName("user").setDescription("المستلم").setRequired(true))
     .addIntegerOption(o => o.setName("amount").setDescription("المبلغ").setRequired(true)),
 
-  async execute(interaction, { gconf, users, saveUsers, pushTx, logTransaction }) {
+  async execute(interaction, { gconf, users, saveUsers, pushTx, logTransaction, pushLog }) {
     const g = gconf();
     const from = interaction.user.id;
     const toUser = interaction.options.getUser("user");
@@ -45,6 +45,7 @@ module.exports = {
       .setTimestamp();
     
     logTransaction(interaction.guildId, embed);
+    await pushLog(interaction.guildId, `💸 <@${from}> حول ${amount}${g.CURRENCY_SYMBOL} إلى <@${to}> (رسوم ${fee}${g.CURRENCY_SYMBOL})`);
 
     return interaction.reply({ content:`تم تحويل ${amount}${g.CURRENCY_SYMBOL} إلى <@${to}> (رسوم ${fee}).`, flags: 64 });
   }
