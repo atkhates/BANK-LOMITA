@@ -134,7 +134,7 @@ async function updateRegList(guildId) {
 const regDraft = new Map();
 
 // ===== events =====
-client.once("ready", () => {
+client.once("clientReady", () => {
   console.log(`تم التشغيل بنجاح: ${client.user.tag}`);
 });
 
@@ -200,7 +200,7 @@ client.on("interactionCreate", async (interaction) => {
     if (interaction.isButton() && interaction.customId === "reg_submit_after") {
       const d = regDraft.get(interaction.user.id);
       if (!d)
-        return interaction.reply({ content: "انتهت الجلسة أو البيانات غير موجودة. أعد تشغيل /register.", ephemeral: true });
+        return interaction.reply({ content: "انتهت الجلسة أو البيانات غير موجودة. أعد تشغيل /register.", flags: 64 });
       return finalizeRegistration(interaction, d);
     }
 
@@ -214,11 +214,11 @@ client.on("interactionCreate", async (interaction) => {
       if (action === "approve" || action === "reject") {
         const permKey = action === "approve" ? "approve" : "reject";
         if (!hasPermission(interaction.member, permKey, gconf))
-          return interaction.reply({ content: "لا تملك صلاحية هذا الإجراء.", ephemeral: true });
+          return interaction.reply({ content: "لا تملك صلاحية هذا الإجراء.", flags: 64 });
 
-        if (!target) return interaction.reply({ content: "لم يتم العثور على سجل المستخدم.", ephemeral: true });
+        if (!target) return interaction.reply({ content: "لم يتم العثور على سجل المستخدم.", flags: 64 });
         if (target.status !== "pending")
-          return interaction.reply({ content: `لا يمكن تنفيذ هذا الإجراء لأن الحالة الحالية هي **${target.status}**.`, ephemeral: true });
+          return interaction.reply({ content: `لا يمكن تنفيذ هذا الإجراء لأن الحالة الحالية هي **${target.status}**.`, flags: 64 });
 
         const approved = (action === "approve");
         target.status = approved ? "approved" : "rejected";
@@ -231,7 +231,7 @@ client.on("interactionCreate", async (interaction) => {
         if (interaction.channelId === gconf.ADMIN_CHANNEL_ID) {
           await interaction.update({ content: `${approved ? "✅ تمت الموافقة" : "⛔ تم الرفض"} على طلب **${target.name}** (${userId})`, components: [] });
         } else {
-          await interaction.reply({ content: "تمت العملية.", ephemeral: true });
+          await interaction.reply({ content: "تمت العملية.", flags: 64 });
         }
         return;
       }
@@ -239,9 +239,9 @@ client.on("interactionCreate", async (interaction) => {
       // Add balance
       if (action === "addBalance") {
         if (!hasPermission(interaction.member, "addBalance", gconf))
-          return interaction.reply({ content: "لا تملك صلاحية هذا الإجراء.", ephemeral: true });
+          return interaction.reply({ content: "لا تملك صلاحية هذا الإجراء.", flags: 64 });
 
-        if (!target) return interaction.reply({ content: "لم يتم العثور على سجل المستخدم.", ephemeral: true });
+        if (!target) return interaction.reply({ content: "لم يتم العثور على سجل المستخدم.", flags: 64 });
 
         const modal = new ModalBuilder().setCustomId(`addBalanceModal_${userId}`).setTitle("إضافة رصيد");
         const amountInput = new TextInputBuilder()
@@ -256,9 +256,9 @@ client.on("interactionCreate", async (interaction) => {
       // Withdraw
       if (action === "withdraw") {
         if (!hasPermission(interaction.member, "addBalance", gconf))
-          return interaction.reply({ content: "لا تملك صلاحية هذا الإجراء.", ephemeral: true });
+          return interaction.reply({ content: "لا تملك صلاحية هذا الإجراء.", flags: 64 });
 
-        if (!target) return interaction.reply({ content: "لم يتم العثور على سجل المستخدم.", ephemeral: true });
+        if (!target) return interaction.reply({ content: "لم يتم العثور على سجل المستخدم.", flags: 64 });
 
         const modal = new ModalBuilder().setCustomId(`withdrawModal_${userId}`).setTitle("سحب رصيد");
         const amountInput = new TextInputBuilder()
@@ -273,20 +273,20 @@ client.on("interactionCreate", async (interaction) => {
       // Promote → row of ranks
       if (action === "promote") {
         if (!hasPermission(interaction.member, "promote", gconf))
-          return interaction.reply({ content: "لا تملك صلاحية هذا الإجراء.", ephemeral: true });
+          return interaction.reply({ content: "لا تملك صلاحية هذا الإجراء.", flags: 64 });
 
         const rankRow = new ActionRowBuilder().addComponents(
           ...(gconf.ranks || ["Bronze","Silver","Gold"]).map(r =>
             new ButtonBuilder().setCustomId(`setrank_${userId}_${r}`).setLabel(r).setStyle(ButtonStyle.Secondary)
           )
         );
-        return interaction.reply({ content: `اختر الرتبة الجديدة لـ <@${userId}>:`, components: [rankRow], ephemeral: true });
+        return interaction.reply({ content: `اختر الرتبة الجديدة لـ <@${userId}>:`, components: [rankRow], flags: 64 });
       }
 
       if (action === "setrank") {
         if (!hasPermission(interaction.member, "promote", gconf))
-          return interaction.reply({ content: "لا تملك صلاحية هذا الإجراء.", ephemeral: true });
-        if (!target) return interaction.reply({ content: "لم يتم العثور على سجل المستخدم.", ephemeral: true });
+          return interaction.reply({ content: "لا تملك صلاحية هذا الإجراء.", flags: 64 });
+        if (!target) return interaction.reply({ content: "لم يتم العثور على سجل المستخدم.", flags: 64 });
         target.rank = extra;
         saveUsers(users);
         await Sheets.onUserChange?.({ id: userId, ...target }).catch(() => {});
@@ -298,11 +298,11 @@ client.on("interactionCreate", async (interaction) => {
       // Freeze / Unfreeze
       if (action === "freeze" || action === "unfreeze") {
         if (!hasPermission(interaction.member, "freeze", gconf))
-          return interaction.reply({ content: "لا تملك صلاحية هذا الإجراء.", ephemeral: true });
-        if (!target) return interaction.reply({ content: "لم يتم العثور على سجل المستخدم.", ephemeral: true });
+          return interaction.reply({ content: "لا تملك صلاحية هذا الإجراء.", flags: 64 });
+        if (!target) return interaction.reply({ content: "لم يتم العثور على سجل المستخدم.", flags: 64 });
         target.frozen = (action === "freeze");
         saveUsers(users);
-        await interaction.reply({ content: `تم ${target.frozen ? "تجميد" : "إلغاء تجميد"} حساب <@${userId}>.`, ephemeral: true });
+        await interaction.reply({ content: `تم ${target.frozen ? "تجميد" : "إلغاء تجميد"} حساب <@${userId}>.`, flags: 64 });
         await pushLog(interaction.guildId, `${target.frozen ? "🧊" : "🔥"} ${target.frozen ? "تم تجميد" : "تم إلغاء تجميد"} حساب <@${userId}> بواسطة ${interaction.user.username}`);
         return;
       }
@@ -310,7 +310,7 @@ client.on("interactionCreate", async (interaction) => {
       // Edit fees
       if (action === "fees") {
         if (!hasPermission(interaction.member, "editFee", gconf))
-          return interaction.reply({ content: "لا تملك صلاحية هذا الإجراء.", ephemeral: true });
+          return interaction.reply({ content: "لا تملك صلاحية هذا الإجراء.", flags: 64 });
         const modal = new ModalBuilder().setCustomId("feesModal").setTitle("تعديل الرسوم البنكية");
         const dep = new TextInputBuilder().setCustomId("deposit").setLabel("رسوم الإيداع %").setStyle(TextInputStyle.Short).setRequired(true);
         const trn = new TextInputBuilder().setCustomId("transfer").setLabel("رسوم التحويل %").setStyle(TextInputStyle.Short).setRequired(true);
@@ -326,8 +326,8 @@ client.on("interactionCreate", async (interaction) => {
       // Edit user info
       if (action === "editInfo") {
         if (!hasPermission(interaction.member, "editInfo", gconf))
-          return interaction.reply({ content: "لا تملك صلاحية هذا الإجراء.", ephemeral: true });
-        if (!target) return interaction.reply({ content: "لم يتم العثور على سجل المستخدم.", ephemeral: true });
+          return interaction.reply({ content: "لا تملك صلاحية هذا الإجراء.", flags: 64 });
+        if (!target) return interaction.reply({ content: "لم يتم العثور على سجل المستخدم.", flags: 64 });
         
         const modal = new ModalBuilder().setCustomId(`editInfoModal_${userId}`).setTitle("تعديل معلومات المستخدم");
         const nameInput = new TextInputBuilder().setCustomId("name").setLabel("الاسم").setStyle(TextInputStyle.Short).setValue(target.name || "").setRequired(true);
@@ -352,79 +352,79 @@ client.on("interactionCreate", async (interaction) => {
     // Add balance submit
     if (interaction.isModalSubmit() && interaction.customId.startsWith("addBalanceModal_")) {
       if (!hasPermission(interaction.member, "addBalance", gconf))
-        return interaction.reply({ content: "لا تملك صلاحية هذا الإجراء.", ephemeral: true });
+        return interaction.reply({ content: "لا تملك صلاحية هذا الإجراء.", flags: 64 });
 
       const userId = interaction.customId.split("_")[1];
       const users = loadUsers();
       const user = users[userId];
-      if (!user) return interaction.reply({ content: "لم يتم العثور على سجل المستخدم.", ephemeral: true });
+      if (!user) return interaction.reply({ content: "لم يتم العثور على سجل المستخدم.", flags: 64 });
 
       const amount = parseFloat(interaction.fields.getTextInputValue("amount"));
-      if (isNaN(amount) || amount <= 0) return interaction.reply({ content: "رجاءً أدخل مبلغًا صالحًا أكبر من 0.", ephemeral: true });
+      if (isNaN(amount) || amount <= 0) return interaction.reply({ content: "رجاءً أدخل مبلغًا صالحًا أكبر من 0.", flags: 64 });
 
       user.balance = (user.balance || 0) + amount;
       saveUsers(users);
 
       pushTx({ type: "admin_deposit", guildId: interaction.guildId, to: userId, amount, fee: 0 });
-      await interaction.reply({ content: `✅ تم إضافة ${amount}${gconf.CURRENCY_SYMBOL || "$"} إلى <@${userId}>. الرصيد: ${user.balance}${gconf.CURRENCY_SYMBOL || "$"}`, ephemeral: true });
+      await interaction.reply({ content: `✅ تم إضافة ${amount}${gconf.CURRENCY_SYMBOL || "$"} إلى <@${userId}>. الرصيد: ${user.balance}${gconf.CURRENCY_SYMBOL || "$"}`, flags: 64 });
       return;
     }
 
     // Withdraw submit
     if (interaction.isModalSubmit() && interaction.customId.startsWith("withdrawModal_")) {
       if (!hasPermission(interaction.member, "addBalance", gconf))
-        return interaction.reply({ content: "لا تملك صلاحية هذا الإجراء.", ephemeral: true });
+        return interaction.reply({ content: "لا تملك صلاحية هذا الإجراء.", flags: 64 });
 
       const userId = interaction.customId.split("_")[1];
       const users = loadUsers();
       const user = users[userId];
-      if (!user) return interaction.reply({ content: "لم يتم العثور على سجل المستخدم.", ephemeral: true });
-      if (user.frozen) return interaction.reply({ content: "الحساب مجمّد. لا يمكن السحب.", ephemeral: true });
+      if (!user) return interaction.reply({ content: "لم يتم العثور على سجل المستخدم.", flags: 64 });
+      if (user.frozen) return interaction.reply({ content: "الحساب مجمّد. لا يمكن السحب.", flags: 64 });
 
       const amount = parseFloat(interaction.fields.getTextInputValue("amount"));
-      if (isNaN(amount) || amount <= 0) return interaction.reply({ content: "رجاءً أدخل مبلغًا صالحًا أكبر من 0.", ephemeral: true });
+      if (isNaN(amount) || amount <= 0) return interaction.reply({ content: "رجاءً أدخل مبلغًا صالحًا أكبر من 0.", flags: 64 });
 
       const feePct = gconf.fees?.WITHDRAW_FEE || 0;
       const fee = Math.floor((amount * feePct) / 100);
       const totalDebit = amount + fee;
 
       if ((user.balance || 0) < totalDebit)
-        return interaction.reply({ content: "الرصيد غير كافٍ.", ephemeral: true });
+        return interaction.reply({ content: "الرصيد غير كافٍ.", flags: 64 });
 
       user.balance = (user.balance || 0) - totalDebit;
       saveUsers(users);
 
       pushTx({ type: "admin_withdraw", guildId: interaction.guildId, from: userId, amount, fee });
-      await interaction.reply({ content: `✅ تم سحب ${amount}${gconf.CURRENCY_SYMBOL || "$"} من <@${userId}> (رسم: ${fee}${gconf.CURRENCY_SYMBOL || "$"}). الرصيد الحالي: ${user.balance}${gconf.CURRENCY_SYMBOL || "$"}`, ephemeral: true });
+      await interaction.reply({ content: `✅ تم سحب ${amount}${gconf.CURRENCY_SYMBOL || "$"} من <@${userId}> (رسم: ${fee}${gconf.CURRENCY_SYMBOL || "$"}). الرصيد الحالي: ${user.balance}${gconf.CURRENCY_SYMBOL || "$"}`, flags: 64 });
       return;
     }
 
     // Fees modal submit
     if (interaction.isModalSubmit() && interaction.customId === "feesModal") {
       if (!hasPermission(interaction.member, "editFee", gconf))
-        return interaction.reply({ content: "لا تملك صلاحية هذا الإجراء.", ephemeral: true });
+        return interaction.reply({ content: "لا تملك صلاحية هذا الإجراء.", flags: 64 });
 
       const dep = Number(interaction.fields.getTextInputValue("deposit"));
       const trn = Number(interaction.fields.getTextInputValue("transfer"));
       const wdr = Number(interaction.fields.getTextInputValue("withdraw"));
       for (const v of [dep, trn, wdr]) {
         if (!Number.isFinite(v) || v < 0 || v > 100) {
-          return interaction.reply({ content: "يجب أن تكون الرسوم بين 0 و 100.", ephemeral: true });
+          return interaction.reply({ content: "يجب أن تكون الرسوم بين 0 و 100.", flags: 64 });
         }
       }
       GC.patch(interaction.guildId, { fees: { DEPOSIT_FEE: dep, TRANSFER_FEE: trn, WITHDRAW_FEE: wdr } });
-      return interaction.reply({ content: `تم تحديث الرسوم: إيداع ${dep}% • تحويل ${trn}% • سحب ${wdr}%`, ephemeral: true });
+      return interaction.reply({ content: `تم تحديث الرسوم: إيداع ${dep}% • تحويل ${trn}% • سحب ${wdr}%`, flags: 64 });
     }
 
     // Edit info modal submit
     if (interaction.isModalSubmit() && interaction.customId.startsWith("editInfoModal_")) {
       if (!hasPermission(interaction.member, "editInfo", gconf))
-        return interaction.reply({ content: "لا تملك صلاحية هذا الإجراء.", ephemeral: true });
+        return interaction.reply({ content: "لا تملك صلاحية هذا الإجراء.", flags: 64 });
 
       const userId = interaction.customId.split("_")[1];
       const users = loadUsers();
       const user = users[userId];
-      if (!user) return interaction.reply({ content: "لم يتم العثور على سجل المستخدم.", ephemeral: true });
+      if (!user) return interaction.reply({ content: "لم يتم العثور على سجل المستخدم.", flags: 64 });
 
       const name = interaction.fields.getTextInputValue("name").trim();
       const country = interaction.fields.getTextInputValue("country").trim();
@@ -434,7 +434,7 @@ client.on("interactionCreate", async (interaction) => {
 
       if (!name || !country || !Number.isFinite(age) || age < 1 || age > 150 ||
           !/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(birth) || !Number.isFinite(income) || income < 0) {
-        return interaction.reply({ content: "رجاءً أدخل بيانات صحيحة.", ephemeral: true });
+        return interaction.reply({ content: "رجاءً أدخل بيانات صحيحة.", flags: 64 });
       }
 
       user.name = name;
@@ -448,13 +448,13 @@ client.on("interactionCreate", async (interaction) => {
       await Sheets.onUserChange?.({ id: userId, ...user }).catch(() => {});
 
       await pushLog(interaction.guildId, `✏️ ${interaction.user.username} قام بتعديل معلومات <@${userId}>`);
-      return interaction.reply({ content: `✅ تم تحديث معلومات <@${userId}> بنجاح.`, ephemeral: true });
+      return interaction.reply({ content: `✅ تم تحديث معلومات <@${userId}> بنجاح.`, flags: 64 });
     }
 
     // Register modal submit → prompt الحالة (and maybe الفصيل)
     if (interaction.isModalSubmit() && interaction.customId === "registerModal") {
       if (gconf.REGISTER_CHANNEL_ID && interaction.channelId !== gconf.REGISTER_CHANNEL_ID) {
-        return interaction.reply({ content: `يمكن إرسال طلب التسجيل فقط من داخل <#${gconf.REGISTER_CHANNEL_ID}>.`, ephemeral: true });
+        return interaction.reply({ content: `يمكن إرسال طلب التسجيل فقط من داخل <#${gconf.REGISTER_CHANNEL_ID}>.`, flags: 64 });
       }
 
       const name = interaction.fields.getTextInputValue("name").trim();
@@ -465,10 +465,10 @@ client.on("interactionCreate", async (interaction) => {
 
       if (!name || !country || !Number.isFinite(age) || age < 16 || age > 65 ||
           !/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(birth) || !Number.isFinite(income) || income <= 0) {
-        return interaction.reply({ content: "رجاءً أدخل بيانات تسجيل صحيحة.", ephemeral: true });
+        return interaction.reply({ content: "رجاءً أدخل بيانات تسجيل صحيحة.", flags: 64 });
       }
       if (income < (gconf.MIN_DEPOSIT || 0)) {
-        return interaction.reply({ content: `الحد الأدنى للدخل هو ${gconf.MIN_DEPOSIT} ${gconf.CURRENCY_SYMBOL || "$"}.`, ephemeral: true });
+        return interaction.reply({ content: `الحد الأدنى للدخل هو ${gconf.MIN_DEPOSIT} ${gconf.CURRENCY_SYMBOL || "$"}.`, flags: 64 });
       }
 
       // stash draft
@@ -495,7 +495,7 @@ client.on("interactionCreate", async (interaction) => {
           new ActionRowBuilder().addComponents(statusSelect),
           new ActionRowBuilder().addComponents(confirmBtn),
         ],
-        ephemeral: true,
+        flags: 64,
       });
     }
 
@@ -509,9 +509,9 @@ async function finalizeRegistration(interaction, draft) {
   try {
     const gconf = GC.get(interaction.guildId);
     if (!draft?.kind)
-      return interaction.reply?.({ content: "الرجاء اختيار الحالة.", ephemeral: true });
+      return interaction.reply?.({ content: "الرجاء اختيار الحالة.", flags: 64 });
     if (draft.kind === "فصيل" && !draft.faction)
-      return interaction.reply?.({ content: "اختر الفصيل قبل الإرسال.", ephemeral: true });
+      return interaction.reply?.({ content: "اختر الفصيل قبل الإرسال.", flags: 64 });
 
     const U = loadUsers();
     const id = interaction.user.id;
@@ -521,7 +521,12 @@ async function finalizeRegistration(interaction, draft) {
       if (existing.status === "pending") reason = "طلبك قيد المراجعة بالفعل.";
       else if (existing.status === "approved") reason = "لديك حساب مفعل بالفعل.";
       else if (existing.status === "blacklisted") reason = "تم إدراجك في القائمة السوداء. تواصل مع الإدارة.";
-      return interaction.reply?.({ content: `لا يمكن إرسال طلب جديد: **${reason}**`, ephemeral: true });
+      return interaction.reply?.({ content: `لا يمكن إرسال طلب جديد: **${reason}**`, flags: 64 });
+    }
+
+    // Defer the interaction to prevent timeout
+    if ((interaction.isAnySelectMenu?.() || interaction.isButton?.()) && !interaction.replied && !interaction.deferred) {
+      await interaction.deferUpdate();
     }
 
     U[id] = {
@@ -537,14 +542,20 @@ async function finalizeRegistration(interaction, draft) {
       faction: draft.kind === "فصيل" ? (draft.faction || "غير محدد") : null,
     };
     saveUsers(U);
-    await Sheets.onUserChange?.({ id, ...U[id] }).catch(() => {});
-    await updateRegList(interaction.guildId);
+    
+    // Do async operations without blocking
+    Promise.all([
+      Sheets.onUserChange?.({ id, ...U[id] }).catch(() => {}),
+      updateRegList(interaction.guildId)
+    ]).catch(() => {});
 
     // clear the ephemeral UI
-    if (interaction.isAnySelectMenu?.() || interaction.isButton?.()) {
+    if (interaction.deferred) {
+      await interaction.editReply({ content: "✅ تم إرسال طلب التسجيل للمراجعة.", components: [] });
+    } else if (interaction.isAnySelectMenu?.() || interaction.isButton?.()) {
       await interaction.update({ content: "✅ تم إرسال طلب التسجيل للمراجعة.", components: [] });
     } else if (!interaction.replied) {
-      await interaction.reply({ content: "✅ تم إرسال طلب التسجيل للمراجعة.", ephemeral: true });
+      await interaction.reply({ content: "✅ تم إرسال طلب التسجيل للمراجعة.", flags: 64 });
     }
 
     // emit card to review channel
@@ -558,8 +569,11 @@ async function finalizeRegistration(interaction, draft) {
     regDraft.delete(id);
   } catch (e) {
     console.error("finalizeRegistration error:", e);
-    if (!interaction.replied)
-      await interaction.reply({ content: "حدث خطأ أثناء إرسال الطلب.", ephemeral: true });
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({ content: "حدث خطأ أثناء إرسال الطلب.", flags: 64 }).catch(() => {});
+    } else if (interaction.deferred) {
+      await interaction.editReply({ content: "حدث خطأ أثناء إرسال الطلب." }).catch(() => {});
+    }
   }
 }
 
