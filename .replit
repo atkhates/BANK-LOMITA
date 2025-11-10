@@ -30,5 +30,5 @@ outputType = "console"
 
 [deployment]
 deploymentTarget = "gce"
-run = ["node", "index.js"]
+run = ["sh", "-c", "node deploy-commands.js"]
 ignorePorts = true
