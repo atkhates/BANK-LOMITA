@@ -93,6 +93,24 @@ async function pushLog(guildId, content) {
   } catch {}
 }
 
+// Transaction log to dedicated channel
+async function logTransaction(guildId, embed) {
+  const gconf = GC.get(guildId);
+  if (!gconf.TRANSACTION_LOG_CHANNEL_ID) return;
+  try {
+    const ch =
+      client.channels.cache.get(gconf.TRANSACTION_LOG_CHANNEL_ID) ||
+      (await client.channels.fetch(gconf.TRANSACTION_LOG_CHANNEL_ID).catch(() => null));
+    if (ch) {
+      if (typeof embed === 'string') {
+        ch.send(embed);
+      } else {
+        ch.send({ embeds: [embed] });
+      }
+    }
+  } catch {}
+}
+
 // Small summary to the reglist channel (optional)
 async function updateRegList(guildId) {
   const gconf = GC.get(guildId);
@@ -155,6 +173,7 @@ client.on("interactionCreate", async (interaction) => {
         updateRegList,
         pushTx,
         pushLog,
+        logTransaction,
       });
       return;
     }
@@ -365,6 +384,21 @@ client.on("interactionCreate", async (interaction) => {
       saveUsers(users);
 
       pushTx({ type: "admin_deposit", guildId: interaction.guildId, to: userId, amount, fee: 0 });
+
+      // Log to transaction channel
+      const depositEmbed = new EmbedBuilder()
+        .setColor(0x2ecc71)
+        .setTitle("➕ إيداع إداري")
+        .addFields(
+          { name: "المسؤول", value: `<@${interaction.user.id}>`, inline: true },
+          { name: "المستلم", value: `<@${userId}> (${user.name || "غير معروف"})`, inline: true },
+          { name: "المبلغ", value: `${amount}${gconf.CURRENCY_SYMBOL || "$"}`, inline: true },
+          { name: "الرصيد الجديد", value: `${user.balance}${gconf.CURRENCY_SYMBOL || "$"}`, inline: true }
+        )
+        .setTimestamp();
+      
+      logTransaction(interaction.guildId, depositEmbed);
+
       await interaction.reply({ content: `✅ تم إضافة ${amount}${gconf.CURRENCY_SYMBOL || "$"} إلى <@${userId}>. الرصيد: ${user.balance}${gconf.CURRENCY_SYMBOL || "$"}`, flags: 64 });
       return;
     }
@@ -394,6 +428,23 @@ client.on("interactionCreate", async (interaction) => {
       saveUsers(users);
 
       pushTx({ type: "admin_withdraw", guildId: interaction.guildId, from: userId, amount, fee });
+
+      // Log to transaction channel
+      const withdrawEmbed = new EmbedBuilder()
+        .setColor(0xe67e22)
+        .setTitle("➖ سحب إداري")
+        .addFields(
+          { name: "المسؤول", value: `<@${interaction.user.id}>`, inline: true },
+          { name: "المستخدم", value: `<@${userId}> (${user.name || "غير معروف"})`, inline: true },
+          { name: "المبلغ", value: `${amount}${gconf.CURRENCY_SYMBOL || "$"}`, inline: true },
+          { name: "الرسوم", value: `${fee}${gconf.CURRENCY_SYMBOL || "$"}`, inline: true },
+          { name: "الإجمالي المسحوب", value: `${totalDebit}${gconf.CURRENCY_SYMBOL || "$"}`, inline: true },
+          { name: "الرصيد المتبقي", value: `${user.balance}${gconf.CURRENCY_SYMBOL || "$"}`, inline: true }
+        )
+        .setTimestamp();
+      
+      logTransaction(interaction.guildId, withdrawEmbed);
+
       await interaction.reply({ content: `✅ تم سحب ${amount}${gconf.CURRENCY_SYMBOL || "$"} من <@${userId}> (رسم: ${fee}${gconf.CURRENCY_SYMBOL || "$"}). الرصيد الحالي: ${user.balance}${gconf.CURRENCY_SYMBOL || "$"}`, flags: 64 });
       return;
     }

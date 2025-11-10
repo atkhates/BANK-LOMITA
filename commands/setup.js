@@ -10,7 +10,8 @@ module.exports = {
     .addChannelOption(o => o.setName("register_channel").setDescription("قناة التسجيل").setRequired(true))
     .addChannelOption(o => o.setName("review_channel").setDescription("قناة مراجعة الطلبات").setRequired(true))
     .addChannelOption(o => o.setName("reglist_channel").setDescription("قناة ملخص حالات التسجيل").setRequired(false))
-    .addChannelOption(o => o.setName("log_channel").setDescription("قناة السجلات (اختياري)").setRequired(false))
+    .addChannelOption(o => o.setName("log_channel").setDescription("قناة السجلات الإدارية (اختياري)").setRequired(false))
+    .addChannelOption(o => o.setName("transaction_log_channel").setDescription("قناة سجل المعاملات المالية (اختياري)").setRequired(false))
     .addRoleOption(o => o.setName("admin_role").setDescription("رول الإدارة (اختياري)").setRequired(false)),
 
   async execute(interaction) {
@@ -20,6 +21,7 @@ module.exports = {
     const review   = interaction.options.getChannel("review_channel", true);
     const reglist  = interaction.options.getChannel("reglist_channel") || null;
     const logs     = interaction.options.getChannel("log_channel") || null;
+    const txLogs   = interaction.options.getChannel("transaction_log_channel") || null;
     const admin    = interaction.options.getRole("admin_role") || null;
 
     GC.set(gid, {
@@ -27,6 +29,7 @@ module.exports = {
       ADMIN_CHANNEL_ID: review.id,
       REGLIST_CHANNEL_ID: reglist?.id || "",
       ADMIN_LOG_CHANNEL_ID: logs?.id || "",
+      TRANSACTION_LOG_CHANNEL_ID: txLogs?.id || "",
       ADMIN_ROLE_ID: admin?.id || "",
     });
 
@@ -34,7 +37,8 @@ module.exports = {
       content:
         `✅ تم الحفظ:\n• التسجيل: <#${register.id}>\n• المراجعة: <#${review.id}>` +
         (reglist ? `\n• قائمة التسجيلات: <#${reglist.id}>` : "") +
-        (logs ? `\n• السجلات: <#${logs.id}>` : "") +
+        (logs ? `\n• السجلات الإدارية: <#${logs.id}>` : "") +
+        (txLogs ? `\n• سجل المعاملات: <#${txLogs.id}>` : "") +
         (admin ? `\n• رول الإدارة: <@&${admin.id}>` : ""),
       flags: 64,
     });

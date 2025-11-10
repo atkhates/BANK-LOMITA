@@ -20,7 +20,8 @@ function baseDefaults() {
       ADMIN_CHANNEL_ID: c.ADMIN_CHANNEL_ID || "",
       ADMIN_LOG_CHANNEL_ID: c.ADMIN_LOG_CHANNEL_ID || "",
       ADMIN_ROLE_ID: c.ADMIN_ROLE_ID || "",
-      REGLIST_CHANNEL_ID: "",     // <- new
+      REGLIST_CHANNEL_ID: "",
+      TRANSACTION_LOG_CHANNEL_ID: "",
     };
   } catch {
     return {
@@ -33,6 +34,7 @@ function baseDefaults() {
       ADMIN_LOG_CHANNEL_ID: "",
       ADMIN_ROLE_ID: "",
       REGLIST_CHANNEL_ID: "",
+      TRANSACTION_LOG_CHANNEL_ID: "",
     };
   }
 }

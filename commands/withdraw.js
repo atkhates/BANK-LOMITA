@@ -1,4 +1,4 @@
-const { SlashCommandBuilder } = require("discord.js");
+const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 const GC = require("../guildConfig");
 
 module.exports = {
@@ -7,8 +7,8 @@ module.exports = {
     .setDescription("سحب رصيد من حسابك")
     .addIntegerOption(o => o.setName("amount").setDescription("المبلغ").setRequired(true)),
 
-  async execute(interaction, { cfg, users, saveUsers, pushTx }) {
-    const g = cfg();
+  async execute(interaction, { gconf, users, saveUsers, pushTx, logTransaction }) {
+    const g = gconf();
     const uid = interaction.user.id;
     const amount = interaction.options.getInteger("amount");
     const U = users();
@@ -31,7 +31,23 @@ module.exports = {
     A.balance -= total;
     A._daily[key] = spent + total;
     saveUsers(U, interaction.guild);
-    pushTx({ type:"withdraw", from:uid, amount, fee });
+    pushTx({ type:"withdraw", guildId: interaction.guildId, from:uid, amount, fee });
+
+    // Log to transaction channel
+    const embed = new EmbedBuilder()
+      .setColor(0xe74c3c)
+      .setTitle("💰 سحب رصيد")
+      .addFields(
+        { name: "المستخدم", value: `<@${uid}> (${A.name || "غير معروف"})`, inline: true },
+        { name: "المبلغ", value: `${amount}${g.CURRENCY_SYMBOL}`, inline: true },
+        { name: "الرسوم", value: `${fee}${g.CURRENCY_SYMBOL}`, inline: true },
+        { name: "الإجمالي المسحوب", value: `${total}${g.CURRENCY_SYMBOL}`, inline: true },
+        { name: "الرصيد المتبقي", value: `${A.balance}${g.CURRENCY_SYMBOL}`, inline: true }
+      )
+      .setTimestamp();
+    
+    logTransaction(interaction.guildId, embed);
+
     return interaction.reply({ content:`💸 تم سحب ${amount}${g.CURRENCY_SYMBOL} (رسوم ${fee}).`, flags: 64 });
   }
 };

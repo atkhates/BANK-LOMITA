@@ -89,12 +89,33 @@ The following environment variables are required:
 - `CLIENT_ID` - Discord application client ID
 
 ### Configuration
-Update `config.json` with your Discord server details:
-- `ADMIN_CHANNEL_ID` - Channel for admin review of registrations
-- `ADMIN_LOG_CHANNEL_ID` - Channel for admin action logs
-- `REGISTER_CHANNEL_ID` - Channel where users can register
-- `ADMIN_CHAT_CHANNEL_ID` - Admin chat channel
-- `ADMIN_ROLE_ID` - Role ID for administrators
+
+Use the `/setup` command to configure all channels for your server:
+
+**Required Channels:**
+- `register_channel` - Channel where users can register accounts
+- `review_channel` - Channel for admin review of registrations
+
+**Optional Channels:**
+- `reglist_channel` - Channel showing registration statistics summary
+- `log_channel` - Channel for admin action logs (approvals, edits, etc.)
+- `transaction_log_channel` - **NEW!** Channel for all financial transactions (transfers, withdrawals, deposits)
+- `admin_role` - Role ID for administrators
+
+**Transaction Log Features:**
+The transaction log channel will automatically display:
+- 💸 **User Transfers** - When users transfer money to each other
+- 💰 **User Withdrawals** - When users withdraw from their accounts
+- ➕ **Admin Deposits** - When admins add balance to accounts
+- ➖ **Admin Withdrawals** - When admins withdraw from accounts
+
+Each transaction log includes:
+- User names and mentions
+- Amount, fees, and totals
+- Remaining balance
+- Timestamp
+
+**Other Configuration:**
 - `CURRENCY_SYMBOL` - Currency symbol (default: $)
 - `ranks` - Available account ranks
 - `fees` - Transaction fees (deposit, transfer, withdraw)
@@ -136,8 +157,15 @@ node deploy-commands.js
 6. Admin approves or rejects
 
 ## Recent Changes
-- **2025-11-10**: Complete integration and error fixes
-  - Fixed all interaction timeout errors by adding `deferUpdate()` and `deferReply()` for long-running operations
+- **2025-11-10**: Transaction logging and complete integration
+  - **Added transaction log channel feature** - All financial transactions now log to a dedicated channel
+    - User transfers (💸) with sender, receiver, amount, fees, and remaining balance
+    - User withdrawals (💰) with amount, fees, and remaining balance  
+    - Admin deposits (➕) with admin, recipient, and new balance
+    - Admin withdrawals (➖) with admin, user, amount, fees, and remaining balance
+  - All transactions display in beautiful embeds with color coding
+  - Configurable via `/setup` command with `transaction_log_channel` parameter
+  - Fixed all interaction timeout errors by adding `deferUpdate()` and `deferReply()`
   - Replaced all deprecated `ephemeral: true` with `flags: 64` across all files
   - Updated event handler from `ready` to `clientReady` for Discord.js v14 compatibility
   - Implemented Google Sheets integration with auto-sheet creation
