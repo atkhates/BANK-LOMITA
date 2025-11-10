@@ -1,8 +1,6 @@
-// commands/setup.js — يحفظ قنوات ورول البوت في هذا السيرفر (كلها متوافقة)
-// يجعل reglist_channel اختيارياً لتفادي الخطأ، ويقرأ فقط ما أُرسل فعلاً.
-
+// commands/setup.js — تهيئة القنوات والرول لكل سيرفر
 const { SlashCommandBuilder, PermissionFlagsBits, ChannelType } = require("discord.js");
-const GC = require("../guildConfig"); // نفس الـ helper الذي يحفظ الـ guildConfigs.json
+const { get: gcGet, set: gcSet } = require("../guildConfig"); // ← فك التصدير (لا مزيد من GC.set undefined)
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -40,36 +38,43 @@ module.exports = {
     ),
 
   async execute(interaction) {
-    // ACK سريع لتجنب مهلة 3 ثواني
-    await interaction.deferReply({ ephemeral: true });
+    try {
+      // ACK سريع لتفادي مهلة 3 ثواني
+      await interaction.deferReply({ ephemeral: true });
 
-    const gid = interaction.guildId;
+      const gid     = interaction.guildId;
+      const register= interaction.options.getChannel("register_channel", true);
+      const review  = interaction.options.getChannel("review_channel", true);
+      const logs    = interaction.options.getChannel("log_channel") || null;
+      const reglist = interaction.options.getChannel("reglist_channel") || null;
+      const admin   = interaction.options.getRole("admin_role") || null;
 
-    const register = interaction.options.getChannel("register_channel", true);
-    const review   = interaction.options.getChannel("review_channel", true);
-    const logs     = interaction.options.getChannel("log_channel") || null;
-    const reglist  = interaction.options.getChannel("reglist_channel") || null;
-    const admin    = interaction.options.getRole("admin_role") || null;
+      const patch = {
+        REGISTER_CHANNEL_ID: register.id,
+        ADMIN_CHANNEL_ID: review.id,
+      };
+      if (logs)   patch.ADMIN_LOG_CHANNEL_ID = logs.id;
+      if (reglist)patch.REGLIST_CHANNEL_ID    = reglist.id;
+      if (admin)  patch.ADMIN_ROLE_ID         = admin.id;
 
-    // احفظ فقط القيم المرسلة
-    const patch = {
-      REGISTER_CHANNEL_ID: register.id,
-      ADMIN_CHANNEL_ID: review.id,
-    };
-    if (logs)   patch.ADMIN_LOG_CHANNEL_ID = logs.id;
-    if (reglist)patch.REGLIST_CHANNEL_ID    = reglist.id;
-    if (admin)  patch.ADMIN_ROLE_ID         = admin.id;
+      const saved = gcSet(gid, patch); // ← هنا الاستدعاء الصحيح
 
-    GC.set(gid, patch);
-
-    await interaction.editReply({
-      content:
-        `✅ تم الحفظ:\n` +
-        `• التسجيل: <#${register.id}>\n` +
-        `• المراجعة: <#${review.id}>\n` +
-        (logs   ? `• السجلات: <#${logs.id}>\n` : "") +
-        (reglist? `• قائمة المسجلين: <#${reglist.id}>\n` : "") +
-        (admin  ? `• رول الإدارة: <@&${admin.id}>\n` : ""),
-    });
+      await interaction.editReply({
+        content:
+          `✅ تم الحفظ للسيرفر \`${interaction.guild.name}\`:\n` +
+          `• التسجيل: <#${saved.REGISTER_CHANNEL_ID}>\n` +
+          `• المراجعة: <#${saved.ADMIN_CHANNEL_ID}>\n` +
+          (saved.ADMIN_LOG_CHANNEL_ID ? `• السجلات: <#${saved.ADMIN_LOG_CHANNEL_ID}>\n` : "") +
+          (saved.REGLIST_CHANNEL_ID    ? `• قائمة المسجلين: <#${saved.REGLIST_CHANNEL_ID}>\n` : "") +
+          (saved.ADMIN_ROLE_ID         ? `• رول الإدارة: <@&${saved.ADMIN_ROLE_ID}>\n` : ""),
+      });
+    } catch (e) {
+      console.error("setup error:", e);
+      if (interaction.deferred && !interaction.replied) {
+        await interaction.editReply({ content: "❌ حدث خطأ أثناء التهيئة.", ephemeral: true });
+      } else if (!interaction.replied) {
+        await interaction.reply({ content: "❌ حدث خطأ أثناء التهيئة.", ephemeral: true });
+      }
+    }
   },
 };
