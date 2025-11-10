@@ -1,50 +1,34 @@
-// commands/transfer.js — تحويل الرصيد + إعلان في قناة المعاملات
-
 const { SlashCommandBuilder } = require("discord.js");
+const GC = require("../guildConfig");
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("transfer")
-    .setDescription("Transfer balance to another user")
-    .addUserOption((o) => o.setName("user").setDescription("Recipient user").setRequired(true))
-    .addIntegerOption((o) => o.setName("amount").setDescription("Amount to transfer").setRequired(true)),
+    .setDescription("تحويل رصيد إلى مستخدم")
+    .addUserOption(o => o.setName("user").setDescription("المستلم").setRequired(true))
+    .addIntegerOption(o => o.setName("amount").setDescription("المبلغ").setRequired(true)),
 
-  // context receives: { cfg, users, saveUsers, postTx }
-  async execute(interaction, { cfg, users, saveUsers, postTx }) {
-    const C = cfg();
+  async execute(interaction, { cfg, users, saveUsers, pushTx }) {
+    const g = cfg();
     const from = interaction.user.id;
     const toUser = interaction.options.getUser("user");
-    if (toUser.bot) return interaction.reply({ content: "Cannot transfer to a bot.", ephemeral: true });
-
     const to = toUser.id;
     const amount = interaction.options.getInteger("amount");
+
     const U = users();
     const A = U[from], B = U[to];
-    if (!A || !B) return interaction.reply({ content: "Both users must have accounts.", ephemeral: true });
-    if (A.frozen) return interaction.reply({ content: "Your account is frozen. Contact support.", ephemeral: true });
-    if (amount <= 0) return interaction.reply({ content: "Amount must be greater than zero.", ephemeral: true });
+    if (!A || !B) return interaction.reply({ content:"يجب أن يملك الطرفان حسابًا.", ephemeral:true });
+    if (A.frozen) return interaction.reply({ content:"حسابك مجمد.", ephemeral:true });
+    if (amount <= 0) return interaction.reply({ content:"المبلغ غير صحيح.", ephemeral:true });
 
-    const fee = Math.floor((amount * (C.fees?.TRANSFER_FEE || 0)) / 100);
+    const fee = Math.floor((amount*(g.fees.TRANSFER_FEE||0))/100);
     const total = amount + fee;
-    if ((A.balance || 0) < total) return interaction.reply({ content: "Insufficient balance.", ephemeral: true });
+    if ((A.balance||0) < total) return interaction.reply({ content:"رصيد غير كافٍ.", ephemeral:true });
 
-    // do transfer
     A.balance -= total;
-    B.balance = (B.balance || 0) + amount;
-    saveUsers(U);
-
-    // announce to TX channel
-    await postTx(interaction.guildId, {
-      type: "transfer",
-      from,
-      to,
-      amount,
-      fee,
-    });
-
-    return interaction.reply({
-      content: `تم تحويل ${amount}${C.CURRENCY_SYMBOL} إلى <@${to}> (رسوم: ${fee}${C.CURRENCY_SYMBOL}).`,
-      ephemeral: true,
-    });
-  },
+    B.balance = (B.balance||0) + amount;
+    saveUsers(U, interaction.guild);
+    pushTx({ type:"transfer", from, to, amount, fee });
+    return interaction.reply({ content:`تم تحويل ${amount}${g.CURRENCY_SYMBOL} إلى <@${to}> (رسوم ${fee}).`, ephemeral:true });
+  }
 };
