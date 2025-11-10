@@ -1,4 +1,4 @@
-// index.js — Arabic + robust register flow + review channel + admin actions + feed
+// index.js — Arabic + per-guild config + robust register flow + review channel + admin actions + Sheets sync
 
 const {
   Client,
@@ -17,105 +17,136 @@ const {
 } = require("discord.js");
 const fs = require("fs");
 require("dotenv").config();
-const GC = require("./guildConfig"); // <— per-guild config
 
-// ---- Global config (defaults)
-const {
-  ADMIN_ROLE_ID,
-  CURRENCY_SYMBOL,
-} = require("./config.json");
+// Base/global config (fallback defaults)
+const baseConfig = require("./config.json");
+// Per-guild config accessors
+const GC = require("./guildConfig");
 
-// ---- Permissions map
+// Role permissions map
 const permsMap = require("./permissions.json");
 
-// ---- Optional Google Sheets sync
-let Sheets = null;
-try { Sheets = require("./sheets"); } catch { Sheets = { syncUsers: async () => {} }; }
+// Google Sheets sync (service account)
+const Sheets = require("./sheets"); // make sure sheets.js exists as provided
 
+// ----------------------------------------------------------------------------
+// Client & commands
+// ----------------------------------------------------------------------------
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
 });
-
 client.commands = new Collection();
 
-/* ============ Load slash commands ============ */
+// Load slash commands from ./commands
 for (const file of fs.readdirSync("./commands").filter((f) => f.endsWith(".js"))) {
+  // eslint-disable-next-line import/no-dynamic-require, global-require
   const command = require(`./commands/${file}`);
   if (command?.data?.name) client.commands.set(command.data.name, command);
 }
 
-client.once("ready", () => {
+client.once("ready", async () => {
   console.log(`تم التشغيل بنجاح: ${client.user.tag}`);
+
+  // Optional one-time full sync: set SHEETS_SYNC_ON_START=true in secrets to run it once
+  if (process.env.SHEETS_SYNC_ON_START === "true") {
+    try {
+      const all = loadUsers();
+      for (const uid of Object.keys(all)) {
+        const u = await client.users.fetch(uid).catch(() => null);
+        if (u) all[uid].tag = u.tag;
+      }
+      await Sheets.syncUsers(all);
+      console.log("[sheets] initial sync done.");
+    } catch (e) {
+      console.error("[sheets] initial sync failed:", e);
+    }
+  }
 });
 
-/* ===================== Helpers ===================== */
+// ----------------------------------------------------------------------------
+// Helpers
+// ----------------------------------------------------------------------------
+function gconf(guildId) {
+  // Per-guild config merging base defaults
+  const g = GC.get(guildId || "");
+  // Merge base defaults (currency, fees, ranks, etc.) with saved per-guild IDs
+  return {
+    ...baseConfig,
+    ...g,
+    // Ensure essential defaults exist
+    CURRENCY_SYMBOL: g.CURRENCY_SYMBOL || baseConfig.CURRENCY_SYMBOL || "$",
+    MIN_DEPOSIT: g.MIN_DEPOSIT ?? baseConfig.MIN_DEPOSIT ?? 0,
+    ranks: g.ranks || baseConfig.ranks || ["Bronze", "Silver", "Gold"],
+    fees: g.fees || baseConfig.fees || { DEPOSIT_FEE: 0, TRANSFER_FEE: 0, WITHDRAW_FEE: 0 },
+  };
+}
+
 function ensureDir(pathLike) {
   const dir = pathLike.split("/").slice(0, -1).join("/");
   if (dir && !fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
+
 function loadUsers() {
   ensureDir("./database/users.json");
   if (!fs.existsSync("./database/users.json")) fs.writeFileSync("./database/users.json", "{}");
   return JSON.parse(fs.readFileSync("./database/users.json", "utf8"));
 }
+
 function saveUsers(users) {
   ensureDir("./database/users.json");
   fs.writeFileSync("./database/users.json", JSON.stringify(users, null, 2));
-  Promise.resolve(Sheets.syncUsers(users)).catch((e) => console.error("Sheet sync error:", e));
 }
-function cfg() {
-  delete require.cache[require.resolve("./config.json")];
-  // eslint-disable-next-line global-require
-  return require("./config.json");
-}
+
 function hasAnyRoleId(member, ids = []) {
   return !!ids?.length && member.roles.cache.some((r) => ids.includes(r.id));
 }
-function hasPermission(member, actionKey) {
+
+function hasPermission(member, actionKey, guildId) {
+  const g = gconf(guildId);
+  const adminRoleId = g.ADMIN_ROLE_ID;
   return (
     member.permissions?.has?.(PermissionFlagsBits.Administrator) ||
-    (ADMIN_ROLE_ID && member.roles.cache.has(ADMIN_ROLE_ID)) ||
+    (adminRoleId && member.roles.cache.has(adminRoleId)) ||
     hasAnyRoleId(member, permsMap[actionKey] || [])
   );
 }
-function canOpenAdminPanel(member) {
+
+function canOpenAdminPanel(member, guildId) {
+  const keys = Object.keys(permsMap);
+  const g = gconf(guildId);
+  const adminRoleId = g.ADMIN_ROLE_ID;
   return (
     member.permissions?.has?.(PermissionFlagsBits.Administrator) ||
-    (ADMIN_ROLE_ID && member.roles.cache.has(ADMIN_ROLE_ID)) ||
-    Object.keys(permsMap).some((k) => hasPermission(member, k))
+    (adminRoleId && member.roles.cache.has(adminRoleId)) ||
+    keys.some((k) => hasPermission(member, k, guildId))
   );
 }
 
-// guild-scoped helpers
-async function getGuildChannel(guildId, key) {
-  const g = GC.get(guildId);
-  const id = g[key];
-  if (!id) return null;
-  const ch = client.channels.cache.get(id) || await client.channels.fetch(id).catch(() => null);
-  return ch || null;
-}
-async function pushLog(msg, guildId) {
+async function pushLog(guildId, msg) {
   try {
-    const logCh = await getGuildChannel(guildId, "ADMIN_LOG_CHANNEL_ID");
-    if (logCh) await logCh.send(String(msg));
+    const g = gconf(guildId);
+    const LOG_CH_ID = g.ADMIN_LOG_CHANNEL_ID || baseConfig.ADMIN_LOG_CHANNEL_ID;
+    if (!LOG_CH_ID) return;
+    const ch =
+      client.channels.cache.get(LOG_CH_ID) ||
+      (await client.channels.fetch(LOG_CH_ID).catch(() => null));
+    if (ch) ch.send(String(msg));
   } catch (e) {
     console.error("pushLog error:", e);
   }
 }
 
-// Feed to a list channel
-async function pushFeed(guildId, content) {
-  const feed = await getGuildChannel(guildId, "REGISTER_FEED_CHANNEL_ID");
-  if (!feed) return;
-  try { await feed.send(content); } catch {}
-}
-
-/* ========= temp store between modal & final submit ========= */
+// ----------------------------------------------------------------------------
+// Registration flow (modal -> الحالة/الفصيل -> finalize)
+// ----------------------------------------------------------------------------
+/** regDraft[userId] = { name,country,age,birth,income, kind?, faction? } */
 const regDraft = new Map();
 
-/* ===== finalize helper (saves & sends review, logs to feed) ===== */
 async function finalizeRegistration(interaction, draft) {
   try {
+    const gid = interaction.guildId;
+    const g = gconf(gid);
+
     if (!draft?.kind) {
       return interaction.reply?.({ content: "الرجاء اختيار الحالة.", ephemeral: true });
     }
@@ -134,33 +165,34 @@ async function finalizeRegistration(interaction, draft) {
       return interaction.reply?.({ content: `لا يمكن إرسال طلب جديد: **${reason}**`, ephemeral: true });
     }
 
-    const conf = cfg();
+    const nowIso = new Date().toISOString();
     U[id] = {
       name: draft.name,
       country: draft.country,
       age: draft.age,
       birth: draft.birth,
       income: draft.income,
-      rank: existing?.rank || conf.ranks?.[0] || "Bronze",
+      rank: existing?.rank || g.ranks?.[0] || "Bronze",
       balance: existing?.balance ?? 0,
       status: "pending",
       kind: draft.kind,
       faction: draft.kind === "فصيل" ? (draft.faction || "غير محدد") : null,
+      created_at: existing?.created_at || nowIso,
+      updated_at: nowIso,
     };
     saveUsers(U);
-    console.log("[register] saved user:", id);
 
-    // respond to user
+    // Mirror to Google Sheets
+    await Sheets.upsertUser(id, U[id], interaction.user.tag);
+
+    // Confirm to user (ephemeral) and remove interactive rows if applicable
     if (interaction.isAnySelectMenu?.() || interaction.isButton?.()) {
       await interaction.update({ content: "✅ تم إرسال طلب التسجيل للمراجعة.", components: [] });
     } else if (!interaction.replied) {
       await interaction.reply({ content: "✅ تم إرسال طلب التسجيل للمراجعة.", ephemeral: true });
     }
 
-    // Feed (list channel)
-    await pushFeed(interaction.guildId, `📝 تم استلام طلب تسجيل جديد: <@${id}> — الحالة: **قيد المراجعة**`);
-
-    // Send review card
+    // Emit review card for this guild (we pass guildId to handler)
     client.emit("userRegistered", {
       id,
       mention: `<@${id}>`,
@@ -174,8 +206,7 @@ async function finalizeRegistration(interaction, draft) {
       status: "pending",
       kind: draft.kind,
       faction: draft.kind === "فصيل" ? (draft.faction || "غير محدد") : null,
-      guildId: interaction.guildId,
-    });
+    }, gid);
 
     regDraft.delete(id);
   } catch (e) {
@@ -186,53 +217,66 @@ async function finalizeRegistration(interaction, draft) {
   }
 }
 
-/* ===================== Interactions ===================== */
+// ----------------------------------------------------------------------------
+// Interactions
+// ----------------------------------------------------------------------------
 client.on("interactionCreate", async (interaction) => {
   try {
-    /* ---- Slash commands ---- */
+    const gid = interaction.guildId;
+    const g = gconf(gid);
+
+    // Slash commands
     if (interaction.isChatInputCommand()) {
-      if (interaction.commandName === "admin" && !canOpenAdminPanel(interaction.member)) {
+      if (interaction.commandName === "admin" && !canOpenAdminPanel(interaction.member, gid)) {
         return interaction.reply({ content: "لا تملك صلاحية فتح لوحة الإدارة.", ephemeral: true });
       }
       const command = client.commands.get(interaction.commandName);
       if (command) {
-        const context = { cfg, users: loadUsers, saveUsers }; // pass getter + io
+        // Provide both per-guild config accessor and helpers
+        const context = {
+          gconf,                       // function (guildId) => merged config
+          cfg: () => gconf(gid),       // backwards-compat
+          users: loadUsers,
+          saveUsers,
+        };
         await command.execute(interaction, context);
       }
       return;
     }
 
-    /* ======== POST-MODAL FLOW ======== */
+    // ===== POST-MODAL selects/buttons for registration =====
+
+    // الحالة select → if "فصيل" show faction select; otherwise finalize immediately
     if (interaction.isStringSelectMenu() && interaction.customId === "reg_status_after") {
       const d = regDraft.get(interaction.user.id) || {};
       d.kind = interaction.values?.[0];
       regDraft.set(interaction.user.id, d);
 
+      // Keep submit row if present (fallback)
       const current = interaction.message.components || [];
-      const submitRow = current.find(r =>
-        r.components?.some(c => c.customId === "reg_submit_after")
-      );
+      const submitRow = current.find(r => r.components?.some(c => c.customId === "reg_submit_after"));
 
       if (d.kind === "فصيل") {
-        const factionRow =
-          new ActionRowBuilder().addComponents(
-            new StringSelectMenuBuilder()
-              .setCustomId("reg_faction_after")
-              .setPlaceholder("اختر الفصيل")
-              .addOptions(
-                { label: "شرطة", value: "شرطة" },
-                { label: "جيش", value: "جيش" },
-                { label: "طب", value: "طب" }
-              )
-          );
+        const factionRow = new ActionRowBuilder().addComponents(
+          new StringSelectMenuBuilder()
+            .setCustomId("reg_faction_after")
+            .setPlaceholder("اختر الفصيل")
+            .addOptions(
+              { label: "شرطة", value: "شرطة" },
+              { label: "جيش", value: "جيش" },
+              { label: "طب", value: "طب" }
+            )
+        );
         const rows = [factionRow];
         if (submitRow) rows.push(submitRow);
+        // Remove الحالة row by not re-adding it
         return interaction.update({ components: rows });
       }
 
       return finalizeRegistration(interaction, d);
     }
 
+    // الفصيل select → finalize immediately after a choice
     if (interaction.isStringSelectMenu() && interaction.customId === "reg_faction_after") {
       const d = regDraft.get(interaction.user.id) || {};
       d.faction = interaction.values?.[0] || null;
@@ -240,6 +284,7 @@ client.on("interactionCreate", async (interaction) => {
       return finalizeRegistration(interaction, d);
     }
 
+    // Manual submit fallback (if someone clicks it)
     if (interaction.isButton() && interaction.customId === "reg_submit_after") {
       const d = regDraft.get(interaction.user.id);
       if (!d) {
@@ -251,14 +296,14 @@ client.on("interactionCreate", async (interaction) => {
       return finalizeRegistration(interaction, d);
     }
 
-    /* ---- Admin buttons ---- */
+    // ===== Admin buttons (approve / reject / others) =====
     if (interaction.isButton()) {
       const users = loadUsers();
       const [action, userId, extra] = interaction.customId.split("_");
 
       if (action === "approve" || action === "reject") {
         const permKey = action === "approve" ? "approve" : "reject";
-        if (!hasPermission(interaction.member, permKey)) {
+        if (!hasPermission(interaction.member, permKey, gid)) {
           return interaction.reply({ content: "لا تملك صلاحية هذا الإجراء.", ephemeral: true });
         }
         const user = users[userId];
@@ -272,66 +317,78 @@ client.on("interactionCreate", async (interaction) => {
 
         const approved = action === "approve";
         user.status = approved ? "approved" : "rejected";
+        user.updated_at = new Date().toISOString();
         saveUsers(users);
 
-        await pushLog(`${approved ? "✅" : "⛔"} ${interaction.user.username} ${approved ? "قبل" : "رفض"} حساب <@${userId}>`, interaction.guildId);
-        await pushFeed(interaction.guildId, `${approved ? "✅" : "⛔"} قرار على الطلب: <@${userId}> — الحالة: **${user.status}**`);
+        // Mirror to Sheets (status + ensure row)
+        await Sheets.updateStatus(userId, user.status);
+        await Sheets.upsertUser(userId, user, null);
 
-        // In review channel: just edit the card; DO NOT delete other messages anymore
-        await interaction.update({
-          content: `${approved ? "✅" : "⛔"} تم ${approved ? "قبول" : "رفض"} طلب فتح الحساب لـ ${user.name} (${userId})`,
-          components: [],
-        });
-        return;
+        await pushLog(gid, `${approved ? "✅" : "⛔"} ${interaction.user.username} ${approved ? "قبل" : "رفض"} حساب <@${userId}>`);
+
+        // If action happened inside REVIEW channel: edit that card only (do NOT delete other cards)
+        if (interaction.channelId === (g.ADMIN_CHANNEL_ID || baseConfig.ADMIN_CHANNEL_ID)) {
+          return interaction.update({
+            content: `${approved ? "✅" : "⛔"} تم ${approved ? "قبول" : "رفض"} طلب فتح الحساب لـ ${user.name} (${userId})`,
+            components: [],
+          });
+        }
+
+        // If done elsewhere (e.g., admin panel), just confirm
+        return interaction.reply({ content: `${approved ? "تم القبول." : "تم الرفض."}`, ephemeral: true });
       }
 
       if (action === "blacklist") {
-        if (!hasPermission(interaction.member, "blacklist"))
+        if (!hasPermission(interaction.member, "blacklist", gid))
           return interaction.reply({ content: "لا تملك صلاحية هذا الإجراء.", ephemeral: true });
-        const user = users[userId];
-        if (!user) return interaction.reply({ content: "لم يتم العثور على سجل المستخدم.", ephemeral: true });
-        user.status = "blacklisted";
+        const u = users[userId];
+        if (!u) return interaction.reply({ content: "لم يتم العثور على سجل المستخدم.", ephemeral: true });
+        u.status = "blacklisted";
+        u.updated_at = new Date().toISOString();
         saveUsers(users);
-        await pushFeed(interaction.guildId, `🚫 تم إدراج <@${userId}> في القائمة السوداء.`);
+
+        await Sheets.updateStatus(userId, "blacklisted");
+        await Sheets.upsertUser(userId, u, null);
+
         return interaction.reply({ content: `🚫 تم إضافة <@${userId}> إلى القائمة السوداء.`, ephemeral: true });
       }
 
       if (action === "promote") {
-        if (!hasPermission(interaction.member, "promote"))
+        if (!hasPermission(interaction.member, "promote", gid))
           return interaction.reply({ content: "لا تملك صلاحية هذا الإجراء.", ephemeral: true });
-        const { ranks } = cfg();
-        const rankRow = new ActionRowBuilder().addComponents(
-          ranks.map((rankName) =>
-            new ButtonBuilder()
-              .setCustomId(`setrank_${userId}_${rankName}`)
-              .setLabel(rankName)
-              .setStyle(ButtonStyle.Secondary)
+
+        const ranks = g.ranks || baseConfig.ranks || ["Bronze", "Silver", "Gold"];
+        const row = new ActionRowBuilder().addComponents(
+          ranks.map((r) =>
+            new ButtonBuilder().setCustomId(`setrank_${userId}_${r}`).setLabel(r).setStyle(ButtonStyle.Secondary)
           )
         );
         return interaction.reply({
           content: `اختر الرتبة الجديدة لـ <@${userId}>:`,
-          components: [rankRow],
+          components: [row],
           ephemeral: true,
         });
       }
 
       if (action === "setrank") {
-        if (!hasPermission(interaction.member, "promote"))
+        if (!hasPermission(interaction.member, "promote", gid))
           return interaction.reply({ content: "لا تملك صلاحية هذا الإجراء.", ephemeral: true });
-        const user = users[userId];
-        if (!user) return interaction.reply({ content: "لم يتم العثور على سجل المستخدم.", ephemeral: true });
-        user.rank = extra;
+        const u = users[userId];
+        if (!u) return interaction.reply({ content: "لم يتم العثور على سجل المستخدم.", ephemeral: true });
+        u.rank = extra;
+        u.updated_at = new Date().toISOString();
         saveUsers(users);
+        await Sheets.upsertUser(userId, u, null);
         return interaction.update({ content: `📈 تم تحديث رتبة <@${userId}> إلى **${extra}**`, components: [] });
       }
 
       if (action === "addBalance") {
-        if (!hasPermission(interaction.member, "addBalance"))
+        if (!hasPermission(interaction.member, "addBalance", gid))
           return interaction.reply({ content: "لا تملك صلاحية هذا الإجراء.", ephemeral: true });
         const modal = new ModalBuilder().setCustomId(`addBalanceModal_${userId}`).setTitle("إضافة رصيد");
         const amountInput = new TextInputBuilder()
           .setCustomId("amount")
-          .setLabel(`المبلغ (${CURRENCY_SYMBOL})`)
+          .setLabel(`المبلغ (${g.CURRENCY_SYMBOL || baseConfig.CURRENCY_SYMBOL || "$"})`)
           .setStyle(TextInputStyle.Short)
           .setRequired(true);
         modal.addComponents(new ActionRowBuilder().addComponents(amountInput));
@@ -339,17 +396,22 @@ client.on("interactionCreate", async (interaction) => {
       }
 
       if (action === "freeze" || action === "unfreeze") {
-        if (!hasPermission(interaction.member, "freeze"))
+        if (!hasPermission(interaction.member, "freeze", gid))
           return interaction.reply({ content: "لا تملك صلاحية هذا الإجراء.", ephemeral: true });
-        const user = users[userId];
-        if (!user) return interaction.reply({ content: "لم يتم العثور على سجل المستخدم.", ephemeral: true });
-        user.frozen = action === "freeze";
+        const u = users[userId];
+        if (!u) return interaction.reply({ content: "لم يتم العثور على سجل المستخدم.", ephemeral: true });
+        u.frozen = action === "freeze";
+        u.updated_at = new Date().toISOString();
         saveUsers(users);
-        return interaction.reply({ content: `تم ${action === "freeze" ? "تجميد" : "إلغاء تجميد"} حساب <@${userId}>.`, ephemeral: true });
+        await Sheets.upsertUser(userId, u, null);
+        return interaction.reply({
+          content: `تم ${action === "freeze" ? "تجميد" : "إلغاء تجميد"} حساب <@${userId}>.`,
+          ephemeral: true,
+        });
       }
 
       if (action === "fees") {
-        if (!hasPermission(interaction.member, "editFee"))
+        if (!hasPermission(interaction.member, "editFee", gid))
           return interaction.reply({ content: "لا تملك صلاحية هذا الإجراء.", ephemeral: true });
         const modal = new ModalBuilder().setCustomId("feesModal").setTitle("تعديل الرسوم البنكية");
         const dep = new TextInputBuilder().setCustomId("deposit").setLabel("رسوم الإيداع %").setStyle(TextInputStyle.Short).setRequired(true);
@@ -364,27 +426,36 @@ client.on("interactionCreate", async (interaction) => {
       }
     }
 
-    /* ---- Add balance modal ---- */
+    // AddBalance modal
     if (interaction.isModalSubmit() && interaction.customId.startsWith("addBalanceModal_")) {
-      if (!hasPermission(interaction.member, "addBalance"))
+      const gid2 = interaction.guildId;
+      if (!hasPermission(interaction.member, "addBalance", gid2))
         return interaction.reply({ content: "لا تملك صلاحية هذا الإجراء.", ephemeral: true });
 
       const userId = interaction.customId.split("_")[1];
       const users = loadUsers();
-      const user = users[userId];
-      if (!user) return interaction.reply({ content: "لم يتم العثور على سجل المستخدم.", ephemeral: true });
+      const u = users[userId];
+      if (!u) return interaction.reply({ content: "لم يتم العثور على سجل المستخدم.", ephemeral: true });
+
       const amount = parseFloat(interaction.fields.getTextInputValue("amount"));
       if (isNaN(amount) || amount <= 0) return interaction.reply({ content: "رجاءً أدخل مبلغًا صالحًا أكبر من 0.", ephemeral: true });
-      user.balance = (user.balance || 0) + amount;
+
+      u.balance = (u.balance || 0) + amount;
+      u.updated_at = new Date().toISOString();
       saveUsers(users);
-      await pushFeed(interaction.guildId, `💰 تم إضافة **${amount}${CURRENCY_SYMBOL}** إلى <@${userId}> (بواسطة ${interaction.user}).`);
-      return interaction.reply({ content: `✅ تم إضافة ${amount}${CURRENCY_SYMBOL} إلى <@${userId}>`, ephemeral: true });
+
+      await Sheets.updateBalance(userId, u.balance);
+      await Sheets.upsertUser(userId, u, null);
+
+      return interaction.reply({ content: `✅ تم إضافة ${amount}${g.CURRENCY_SYMBOL || "$"} إلى <@${userId}>`, ephemeral: true });
     }
 
-    /* ---- Fees modal ---- */
+    // Fees modal
     if (interaction.isModalSubmit() && interaction.customId === "feesModal") {
-      if (!hasPermission(interaction.member, "editFee"))
+      const gid2 = interaction.guildId;
+      if (!hasPermission(interaction.member, "editFee", gid2))
         return interaction.reply({ content: "لا تملك صلاحية هذا الإجراء.", ephemeral: true });
+
       try {
         const dep = Number(interaction.fields.getTextInputValue("deposit"));
         const trn = Number(interaction.fields.getTextInputValue("transfer"));
@@ -394,19 +465,18 @@ client.on("interactionCreate", async (interaction) => {
             return interaction.reply({ content: "يجب أن تكون الرسوم بين 0 و 100.", ephemeral: true });
           }
         }
-        const conf = cfg();
-        conf.fees = { DEPOSIT_FEE: dep, TRANSFER_FEE: trn, WITHDRAW_FEE: wdr };
-        fs.writeFileSync("./config.json", JSON.stringify(conf, null, 2));
-        return interaction.reply({ content: `تم تحديث الرسوم: إيداع ${dep}% • تحويل ${trn}% • سحب ${wdr}%`, ephemeral: true });
+        // Update global fees in config.json (simple global approach)
+        baseConfig.fees = { DEPOSIT_FEE: dep, TRANSFER_FEE: trn, WITHDRAW_FEE: wdr };
+        fs.writeFileSync("./config.json", JSON.stringify(baseConfig, null, 2));
+        await interaction.reply({ content: `تم تحديث الرسوم: إيداع ${dep}% • تحويل ${trn}% • سحب ${wdr}%`, ephemeral: true });
       } catch (e) {
         console.error("فشل تحديث الرسوم:", e);
         if (!interaction.replied) return interaction.reply({ content: "حدث خطأ أثناء تحديث الرسوم.", ephemeral: true });
       }
     }
 
-    /* ---- Register modal ---- */
+    // Register modal → collect base data then ask for الحالة (and maybe فصيل)
     if (interaction.isModalSubmit() && interaction.customId === "registerModal") {
-      const g = GC.get(interaction.guildId);
       if (g.REGISTER_CHANNEL_ID && interaction.channelId !== g.REGISTER_CHANNEL_ID) {
         return interaction.reply({ content: `يمكن إرسال طلب التسجيل فقط من داخل <#${g.REGISTER_CHANNEL_ID}>.`, ephemeral: true });
       }
@@ -421,13 +491,14 @@ client.on("interactionCreate", async (interaction) => {
             !/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(birth) || !Number.isFinite(income) || income <= 0) {
           return interaction.reply({ content: "رجاءً أدخل بيانات تسجيل صحيحة.", ephemeral: true });
         }
-        const conf = cfg();
-        if (income < (conf.MIN_DEPOSIT || 0)) {
-          return interaction.reply({ content: `الحد الأدنى للدخل هو ${conf.MIN_DEPOSIT} ${conf.CURRENCY_SYMBOL}.`, ephemeral: true });
+        if (income < (g.MIN_DEPOSIT || 0)) {
+          return interaction.reply({ content: `الحد الأدنى للدخل هو ${g.MIN_DEPOSIT} ${g.CURRENCY_SYMBOL}.`, ephemeral: true });
         }
 
+        // Stash draft
         regDraft.set(interaction.user.id, { name, country, age, birth, income });
 
+        // الحالة select + fallback submit button
         const statusSelect = new StringSelectMenuBuilder()
           .setCustomId("reg_status_after")
           .setPlaceholder("اختر الحالة")
@@ -436,11 +507,7 @@ client.on("interactionCreate", async (interaction) => {
             { label: "عصابة", value: "عصابة" },
             { label: "فصيل", value: "فصيل" }
           );
-
-        const confirmBtn = new ButtonBuilder()
-          .setCustomId("reg_submit_after")
-          .setLabel("إرسال الطلب")
-          .setStyle(ButtonStyle.Primary);
+        const confirmBtn = new ButtonBuilder().setCustomId("reg_submit_after").setLabel("إرسال الطلب").setStyle(ButtonStyle.Primary);
 
         const row1 = new ActionRowBuilder().addComponents(statusSelect);
         const row2 = new ActionRowBuilder().addComponents(confirmBtn);
@@ -460,12 +527,43 @@ client.on("interactionCreate", async (interaction) => {
   }
 });
 
-/* ===== review card (kept) ===== */
-client.on("userRegistered", async (user) => {
+// ----------------------------------------------------------------------------
+// Review card sender (does NOT delete previous messages)
+// ----------------------------------------------------------------------------
+client.on("userRegistered", async (user, guildId) => {
   try {
-    const reviewChannel = await getGuildChannel(user.guildId, "ADMIN_CHANNEL_ID");
+    const g = gconf(guildId);
+    const REVIEW_ID = g.ADMIN_CHANNEL_ID || baseConfig.ADMIN_CHANNEL_ID;
+    if (!REVIEW_ID) {
+      await pushLog(guildId, "⚠️ لم أستطع إيجاد قناة المراجعة. اضبطها عبر /setup.");
+      return;
+    }
+
+    const reviewChannel =
+      client.channels.cache.get(REVIEW_ID) ||
+      (await client.channels.fetch?.(REVIEW_ID).catch(() => null));
+
     if (!reviewChannel) {
-      await pushLog(`⚠️ لم أستطع إيجاد قناة المراجعة (ID: ${GC.get(user.guildId).ADMIN_CHANNEL_ID || "غير محدد"})`, user.guildId);
+      await pushLog(guildId, `⚠️ قناة المراجعة غير موجودة (ID: ${REVIEW_ID}).`);
+      return;
+    }
+
+    if (
+      ![
+        ChannelType.GuildText,
+        ChannelType.PublicThread,
+        ChannelType.PrivateThread,
+        ChannelType.GuildAnnouncement,
+      ].includes(reviewChannel.type)
+    ) {
+      await pushLog(guildId, `⚠️ القناة (${REVIEW_ID}) ليست قناة نصية صالحة للإرسال.`);
+      return;
+    }
+
+    const me = reviewChannel.guild?.members?.me;
+    const perms = me ? reviewChannel.permissionsFor(me) : null;
+    if (!perms?.has(PermissionFlagsBits.ViewChannel) || !perms?.has(PermissionFlagsBits.SendMessages)) {
+      await pushLog(guildId, "⚠️ لا أملك صلاحية عرض/إرسال في قناة المراجعة.");
       return;
     }
 
@@ -479,7 +577,7 @@ client.on("userRegistered", async (user) => {
         { name: "البلد", value: String(user.country || "—"), inline: true },
         { name: "العمر", value: String(user.age ?? "—"), inline: true },
         { name: "تاريخ الميلاد", value: String(user.birth || "—"), inline: true },
-        { name: "الدخل الشهري", value: `${user.income ?? 0} ${CURRENCY_SYMBOL}`, inline: true },
+        { name: "الدخل الشهري", value: `${user.income ?? 0} ${g.CURRENCY_SYMBOL || baseConfig.CURRENCY_SYMBOL || "$"}`, inline: true },
         { name: "الحالة", value: String(user.kind || "مدني"), inline: true },
         { name: "الفصيل", value: String(user.faction || "—"), inline: true },
         { name: "ID", value: String(user.id), inline: false }
@@ -498,4 +596,5 @@ client.on("userRegistered", async (user) => {
   }
 });
 
+// ----------------------------------------------------------------------------
 client.login(process.env.TOKEN);
