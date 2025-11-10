@@ -8,6 +8,7 @@ const APP_ID  = process.env.APP_ID;
 const GUILD_ID = process.env.GUILD_ID;
 
 const isGlobal = process.argv.includes("--global");
+const isPurge = process.argv.includes("--purge");
 
 if (!TOKEN || !APP_ID) {
   console.error("❌ Missing TOKEN / APP_ID in .env");
@@ -23,20 +24,32 @@ if (!isGlobal && !GUILD_ID) {
 const rest = new REST({ version: "10" }).setToken(TOKEN);
 const commandsDir = path.join(__dirname, "commands");
 const files = fs.readdirSync(commandsDir).filter(f => f.endsWith(".js"));
-const body = [];
+let body = [];
 
-for (const f of files) {
-  const mod = require(path.join(commandsDir, f));
-  if (mod?.data) body.push(mod.data.toJSON());
+if (!isPurge) {
+  for (const f of files) {
+    const mod = require(path.join(commandsDir, f));
+    if (mod?.data) body.push(mod.data.toJSON());
+  }
 }
 
 (async () => {
-  if (isGlobal) {
-    await rest.put(Routes.applicationCommands(APP_ID), { body });
-    console.log(`✅ Deployed ${body.length} commands globally`);
-    console.log("⚠️ Note: Global commands can take up to 1 hour to appear in all servers");
+  if (isPurge) {
+    if (isGlobal) {
+      await rest.put(Routes.applicationCommands(APP_ID), { body: [] });
+      console.log("🗑️ Purged all global commands");
+    } else {
+      await rest.put(Routes.applicationGuildCommands(APP_ID, GUILD_ID), { body: [] });
+      console.log(`🗑️ Purged all commands from guild ${GUILD_ID}`);
+    }
   } else {
-    await rest.put(Routes.applicationGuildCommands(APP_ID, GUILD_ID), { body });
-    console.log(`✅ Deployed ${body.length} commands to guild ${GUILD_ID}`);
+    if (isGlobal) {
+      await rest.put(Routes.applicationCommands(APP_ID), { body });
+      console.log(`✅ Deployed ${body.length} commands globally`);
+      console.log("⚠️ Note: Global commands can take up to 1 hour to appear in all servers");
+    } else {
+      await rest.put(Routes.applicationGuildCommands(APP_ID, GUILD_ID), { body });
+      console.log(`✅ Deployed ${body.length} commands to guild ${GUILD_ID}`);
+    }
   }
 })();
