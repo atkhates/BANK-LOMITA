@@ -17,26 +17,28 @@ function defaults() {
     const c = require("./config.json");
     return {
       CURRENCY_SYMBOL: c.CURRENCY_SYMBOL || "$",
-      MIN_DEPOSIT: c.MIN_DEPOSIT || 50000,
+      MIN_DEPOSIT: c.MIN_DEPOSIT ?? 0,
       ranks: c.ranks || ["Bronze", "Silver", "Gold"],
       fees: c.fees || { DEPOSIT_FEE: 0, TRANSFER_FEE: 0, WITHDRAW_FEE: 0 },
-      // optional keys will simply be undefined unless set via /setup:
+
+      // IDs (empty by default; set via /setup)
       REGISTER_CHANNEL_ID: c.REGISTER_CHANNEL_ID || "",
       ADMIN_CHANNEL_ID: c.ADMIN_CHANNEL_ID || "",
+      REG_LIST_CHANNEL_ID: "",               // <— NEW
       ADMIN_LOG_CHANNEL_ID: c.ADMIN_LOG_CHANNEL_ID || "",
-      TX_CHANNEL_ID: "",          // << new; set via /setup
       ADMIN_ROLE_ID: c.ADMIN_ROLE_ID || "",
     };
   } catch {
     return {
       CURRENCY_SYMBOL: "$",
-      MIN_DEPOSIT: 50000,
+      MIN_DEPOSIT: 0,
       ranks: ["Bronze", "Silver", "Gold"],
       fees: { DEPOSIT_FEE: 0, TRANSFER_FEE: 0, WITHDRAW_FEE: 0 },
+
       REGISTER_CHANNEL_ID: "",
       ADMIN_CHANNEL_ID: "",
+      REG_LIST_CHANNEL_ID: "",               // <— NEW
       ADMIN_LOG_CHANNEL_ID: "",
-      TX_CHANNEL_ID: "",
       ADMIN_ROLE_ID: "",
     };
   }
