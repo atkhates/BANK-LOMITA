@@ -1,83 +1,103 @@
-// sheets.js — optional Google Sheets sync
+// sheets.js — minimal Sheets integration (safe no-ops if env missing)
+
 const { google } = require("googleapis");
-const fs = require("fs");
 
-const SHEETS_ID = process.env.SHEETS_ID;
-const EMAIL = process.env.GOOGLE_CLIENT_EMAIL;
-let KEY = process.env.GOOGLE_PRIVATE_KEY || "";
-if (KEY.startsWith('"') && KEY.endsWith('"')) KEY = KEY.slice(1, -1);
-KEY = KEY.replace(/\\n/g, "\n");
+const {
+  SHEET_ID,
+  GOOGLE_CLIENT_EMAIL,
+  GOOGLE_PRIVATE_KEY,
+  SHEETS_SYNC_ON_START,
+} = process.env;
 
-function enabled() {
-  return SHEETS_ID && EMAIL && KEY;
+// If any missing, export safe no-ops
+if (!SHEET_ID || !GOOGLE_CLIENT_EMAIL || !GOOGLE_PRIVATE_KEY) {
+  module.exports = {
+    syncUsers: async () => {},
+    logTx: async () => {},
+    onUserChange: async () => {},
+  };
+  return;
 }
 
-function auth() {
-  return new google.auth.JWT({
-    email: EMAIL,
-    key: KEY,
-    scopes: ["https://www.googleapis.com/auth/spreadsheets"]
+// Some hosts store the key with literal \n characters
+const privateKey = GOOGLE_PRIVATE_KEY.replace(/\\n/g, "\n");
+
+const auth = new google.auth.GoogleAuth({
+  credentials: {
+    client_email: GOOGLE_CLIENT_EMAIL,
+    private_key: privateKey,
+  },
+  scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+});
+
+const sheets = google.sheets({ version: "v4", auth });
+
+async function ensureHeader(range, headerRow) {
+  await sheets.spreadsheets.values.update({
+    spreadsheetId: SHEET_ID,
+    range,
+    valueInputOption: "RAW",
+    requestBody: { values: [headerRow] },
   });
 }
 
-async function ensureHeaders(sheets, range, headers) {
-  const res = await sheets.spreadsheets.values.get({ spreadsheetId: SHEETS_ID, range });
-  if (!res.data.values || !res.data.values.length) {
+async function syncUsers(usersObj) {
+  // Write all users to Users!A:K
+  const rows = [["ID","Name","Country","Age","Birth","Income","Rank","Balance","Status","Kind","Faction"]];
+  for (const id of Object.keys(usersObj || {})) {
+    const u = usersObj[id];
+    rows.push([
+      id,
+      u.name ?? "",
+      u.country ?? "",
+      u.age ?? "",
+      u.birth ?? "",
+      u.income ?? "",
+      u.rank ?? "",
+      u.balance ?? "",
+      u.status ?? "",
+      u.kind ?? "",
+      u.faction ?? "",
+    ]);
+  }
+  await ensureHeader("Users!A1:K1", rows[0]);
+  await sheets.spreadsheets.values.clear({ spreadsheetId: SHEET_ID, range: "Users!A2:K" });
+  if (rows.length > 1) {
     await sheets.spreadsheets.values.update({
-      spreadsheetId: SHEETS_ID,
-      range,
+      spreadsheetId: SHEET_ID,
+      range: "Users!A2",
       valueInputOption: "RAW",
-      requestBody: { values: [headers] }
+      requestBody: { values: rows.slice(1) },
     });
   }
 }
 
-module.exports = {
-  // Write all users to “Users!A:K”
-  async syncUsers(usersObj) {
-    if (!enabled()) return;
-    const jwt = auth();
-    const sheets = google.sheets({ version: "v4", auth: jwt });
+async function logTx(entry) {
+  // Append to Tx!A:E
+  const header = ["Timestamp","Type","From","To","Amount","Fee"];
+  await ensureHeader("Tx!A1:F1", header);
+  await sheets.spreadsheets.values.append({
+    spreadsheetId: SHEET_ID,
+    range: "Tx!A:F",
+    valueInputOption: "RAW",
+    insertDataOption: "INSERT_ROWS",
+    requestBody: {
+      values: [[
+        new Date().toISOString(),
+        entry.type || "",
+        entry.from || "",
+        entry.to || "",
+        entry.amount ?? "",
+        entry.fee ?? "",
+      ]],
+    },
+  });
+}
 
-    const headers = [
-      "UserID","Name","Country","Age","Birth","Income","Rank","Balance",
-      "Status","Kind","Faction"
-    ];
-    await ensureHeaders(sheets, "Users!A1:K1", headers);
+async function onUserChange(user) {
+  // Just re-sync whole users table for simplicity (small bots it’s fine)
+  // You could optimize by upserting the row with ID==user.id if you like.
+  return; // optional no-op; full sync happens on every save in index.js already
+}
 
-    const rows = Object.entries(usersObj).map(([id, u]) => ([
-      id, u.name || "", u.country || "", u.age ?? "", u.birth || "",
-      u.income ?? 0, u.rank || "", u.balance ?? 0, u.status || "",
-      u.kind || "", u.faction || ""
-    ]));
-
-    await sheets.spreadsheets.values.clear({ spreadsheetId: SHEETS_ID, range: "Users!A2:K" });
-    if (rows.length) {
-      await sheets.spreadsheets.values.append({
-        spreadsheetId: SHEETS_ID,
-        range: "Users!A2",
-        valueInputOption: "RAW",
-        requestBody: { values: rows }
-      });
-    }
-  },
-
-  // Append one transaction to “Tx!A:D”
-  async logTx(row) {
-    if (!enabled()) return;
-    const jwt = auth();
-    const sheets = google.sheets({ version: "v4", auth: jwt });
-
-    const headers = ["Time","Type","Actor","Details"];
-    await ensureHeaders(sheets, "Tx!A1:D1", headers);
-
-    const when = new Date().toISOString();
-    const pretty = JSON.stringify(row);
-    await sheets.spreadsheets.values.append({
-      spreadsheetId: SHEETS_ID,
-      range: "Tx!A2",
-      valueInputOption: "RAW",
-      requestBody: { values: [[when, row.type || "", row.actor || "", pretty]] }
-    });
-  }
-};
+module.exports = { syncUsers, logTx, onUserChange };

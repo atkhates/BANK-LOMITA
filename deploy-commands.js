@@ -7,8 +7,16 @@ const TOKEN   = process.env.TOKEN;
 const APP_ID  = process.env.APP_ID;
 const GUILD_ID = process.env.GUILD_ID;
 
-if (!TOKEN || !APP_ID || !GUILD_ID) {
-  console.error("❌ Missing TOKEN / APP_ID / GUILD_ID in .env");
+const isGlobal = process.argv.includes("--global");
+
+if (!TOKEN || !APP_ID) {
+  console.error("❌ Missing TOKEN / APP_ID in .env");
+  process.exit(1);
+}
+
+if (!isGlobal && !GUILD_ID) {
+  console.error("❌ Missing GUILD_ID in .env (required for guild-specific deployment)");
+  console.error("💡 Use --global flag to deploy commands globally instead");
   process.exit(1);
 }
 
@@ -23,6 +31,12 @@ for (const f of files) {
 }
 
 (async () => {
-  await rest.put(Routes.applicationGuildCommands(APP_ID, GUILD_ID), { body });
-  console.log(`✅ Deployed ${body.length} commands to guild ${GUILD_ID}`);
+  if (isGlobal) {
+    await rest.put(Routes.applicationCommands(APP_ID), { body });
+    console.log(`✅ Deployed ${body.length} commands globally`);
+    console.log("⚠️ Note: Global commands can take up to 1 hour to appear in all servers");
+  } else {
+    await rest.put(Routes.applicationGuildCommands(APP_ID, GUILD_ID), { body });
+    console.log(`✅ Deployed ${body.length} commands to guild ${GUILD_ID}`);
+  }
 })();
