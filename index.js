@@ -36,21 +36,40 @@ for (const f of fs.readdirSync("./commands").filter(x=>x.endsWith(".js"))) {
 client.once("ready", () => console.log(`تم التشغيل بنجاح: ${client.user.tag}`));
 
 /* helpers */
-function ensureFile(pathLike, init="{}") {
-  const dir = pathLike.split("/").slice(0,-1).join("/");
-  if (dir && !fs.existsSync(dir)) fs.mkdirSync(dir, { recursive:true });
-  if (!fs.existsSync(pathLike)) fs.writeFileSync(pathLike, init);
+function ensureDir(pathLike) {
+  const dir = pathLike.split("/").slice(0, -1).join("/");
+  if (dir && !fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
+
 function loadUsers() {
-  ensureFile("./database/users.json", "{}");
-  return JSON.parse(fs.readFileSync("./database/users.json","utf8"));
+  const PATH = "./database/users.json";
+  ensureDir(PATH);
+  if (!fs.existsSync(PATH)) fs.writeFileSync(PATH, "{}");
+  try {
+    const raw = fs.readFileSync(PATH, "utf8");
+    return JSON.parse(raw);
+  } catch (e) {
+    console.error("[users.json] JSON parse failed -> creating backup and resetting.", e.message);
+    // خذ نسخة احتياطية قبل الإصلاح
+    try {
+      const bad = fs.readFileSync(PATH, "utf8");
+      fs.writeFileSync(`./database/users_corrupt_${Date.now()}.json.bak`, bad);
+    } catch {}
+    fs.writeFileSync(PATH, "{}");
+    return {};
+  }
 }
-function saveUsers(U, guild) {
-  ensureFile("./database/users.json","{}");
-  fs.writeFileSync("./database/users.json", JSON.stringify(U,null,2));
-  Sheets.syncUsers(U).catch(()=>{});
-  updateRegList(guild).catch(()=>{});
+
+function saveUsers(users) {
+  const PATH = "./database/users.json";
+  ensureDir(PATH);
+  fs.writeFileSync(PATH, JSON.stringify(users, null, 2));
+  // (اختياري) مزامنة Google Sheets إن كنت مفعّلها
+  Promise.resolve(Sheets.syncUsers?.(users)).catch((e) =>
+    console.error("Sheet sync error:", e)
+  );
 }
+
 function pushTx(tx) {
   ensureFile("./database/transactions.json","[]");
   const arr = JSON.parse(fs.readFileSync("./database/transactions.json","utf8"));
