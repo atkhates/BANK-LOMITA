@@ -11,20 +11,68 @@ A Discord bot that manages a virtual banking system with Arabic UI. Users can re
 
 ## Architecture
 
-### Core Files
-- `index.js` - Main bot entry point, handles all interactions and events
-- `deploy-commands.js` - Registers slash commands with Discord API
-- `config.json` - Bot configuration (channel IDs, roles, fees, ranks)
-- `permissions.json` - Role-based permissions mapping
-- `database/users.json` - User data storage (auto-created)
+### How Everything Connects
 
-### Commands Directory
-- `register.js` - Account registration modal
-- `account.js` - Check account balance and info
-- `transfer.js` - Transfer funds between users
-- `rank.js` - View available ranks
-- `admin.js` - Admin control panel
-- `support.js` - User support system
+The bot follows a modular architecture where **`index.js`** is the central orchestrator:
+
+```
+index.js (Main Hub)
+├── Commands (./commands/*.js)
+│   ├── register.js → Shows registration modal
+│   ├── account.js → Displays user balance/info
+│   ├── transfer.js → Handles money transfers
+│   ├── withdraw.js → Processes withdrawals
+│   ├── rank.js → Shows available ranks
+│   ├── admin.js → Admin control panel
+│   ├── reglist.js → Registration statistics
+│   ├── setup.js → Per-guild configuration
+│   └── support.js → Support ticket system
+│
+├── Configuration & Permissions
+│   ├── guildConfig.js → Per-guild settings (multi-server support)
+│   ├── guildConfigs.json → Stored guild configurations
+│   ├── config.json → Default configuration template
+│   └── permissions.json → Role-based permission mapping
+│
+├── Data Persistence
+│   ├── database/users.json → User accounts & balances
+│   └── database/transactions.json → Transaction history
+│
+└── Google Sheets Integration (Optional)
+    └── sheets.js → Real-time sync with Google Sheets
+```
+
+### Core Files
+
+**Main Entry Point:**
+- `index.js` - Central orchestrator that:
+  - Loads all command modules from `./commands/`
+  - Handles all Discord interactions (slash commands, buttons, modals, select menus)
+  - Provides helper functions to commands: `loadUsers()`, `saveUsers()`, `pushTx()`, `updateRegList()`, `pushLog()`
+  - Enforces permissions using `hasPermission()` with data from `permissions.json`
+  - Manages registration flow with multi-step modals and selects
+  - Syncs data to Google Sheets (if configured)
+
+**Configuration Management:**
+- `guildConfig.js` - Per-guild configuration accessor
+  - Exports: `get(guildId)`, `set(guildId, config)`, `patch(guildId, updates)`
+  - Allows multi-server bot deployment with separate settings per server
+  - Falls back to `config.json` defaults
+- `permissions.json` - Role-based permissions for admin actions
+  - Maps role IDs to permissions: approve, reject, addBalance, editInfo, editFee, etc.
+
+**Data Layer:**
+- `database/users.json` - User data storage (auto-created)
+- `database/transactions.json` - Transaction log (auto-created)
+- `sheets.js` - Optional Google Sheets integration
+  - Safely wrapped: if unavailable, bot uses no-op methods
+  - Syncs users and transactions in real-time
+  - Auto-creates "Users" and "Transactions" sheets
+
+**Command Registration:**
+- `deploy-commands.js` - Registers slash commands with Discord API
+  - Must be run when commands are added/modified
+  - Supports both guild-specific (instant) and global deployment (1 hour)
 
 ### User Model
 Each user record contains:
@@ -88,14 +136,30 @@ node deploy-commands.js
 6. Admin approves or rejects
 
 ## Recent Changes
+- **2025-11-10**: Complete integration and error fixes
+  - Fixed all interaction timeout errors by adding `deferUpdate()` and `deferReply()` for long-running operations
+  - Replaced all deprecated `ephemeral: true` with `flags: 64` across all files
+  - Updated event handler from `ready` to `clientReady` for Discord.js v14 compatibility
+  - Implemented Google Sheets integration with auto-sheet creation
+  - Added per-guild configuration system for multi-server support
+  - Added comprehensive Edit Info feature for admins
+  - Documented complete architecture showing how all components connect
+
 - **2025-11-06**: Project imported to Replit
   - Configured workflow for bot execution
-  - Set up environment secrets (TOKEN, CLIENT_ID)
-  - Installed dependencies (discord.js, dotenv)
+  - Set up environment secrets (TOKEN, CLIENT_ID, GOOGLE_CLIENT_EMAIL, GOOGLE_PRIVATE_KEY, SHEET_ID)
+  - Installed dependencies (discord.js, dotenv, googleapis)
   - Bot successfully running and connected to Discord
 
 ## Current State
-The bot is fully operational and running. The workflow "discord-bot" automatically starts the bot using `node index.js`.
+The bot is fully operational with all components properly connected:
+- ✅ All files integrated and working together
+- ✅ Google Sheets sync enabled (optional, gracefully degrades if unavailable)
+- ✅ Multi-server support via per-guild configuration
+- ✅ All interaction timeouts fixed
+- ✅ No deprecation warnings
+- ✅ Complete permission system active
+- ✅ Workflow "discord-bot" auto-starts with `node index.js`
 
 ## Notes
 - Database is file-based using JSON storage in `database/users.json`

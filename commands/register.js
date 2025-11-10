@@ -16,7 +16,7 @@ module.exports = {
     if (g.REGISTER_CHANNEL_ID && interaction.channelId !== g.REGISTER_CHANNEL_ID) {
       return interaction.reply({
         content: `يمكن استخدام هذا الأمر فقط في قناة التسجيل <#${g.REGISTER_CHANNEL_ID}>.`,
-        ephemeral: true,
+        flags: 64,
       });
     }
 

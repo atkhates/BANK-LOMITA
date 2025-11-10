@@ -35,6 +35,6 @@ module.exports = {
         ].join("\n\n")
       );
 
-    await interaction.reply({ embeds: [embed], ephemeral: true });
+    await interaction.reply({ embeds: [embed], flags: 64 });
   },
 };

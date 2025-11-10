@@ -14,7 +14,7 @@ module.exports = {
       if (!user) {
         return interaction.reply({
           content: "⚠️ لم يتم العثور على سجل حسابك. الرجاء التسجيل أولًا باستخدام `/register`.",
-          ephemeral: true, // في v14 لا مشكلة من هذا التحذير
+          flags: 64, // في v14 لا مشكلة من هذا التحذير
         });
       }
 
@@ -36,13 +36,13 @@ module.exports = {
         )
         .setFooter({ text: "🏦 بنك المجتمع" });
 
-      await interaction.reply({ embeds: [embed], ephemeral: true });
+      await interaction.reply({ embeds: [embed], flags: 64 });
     } catch (error) {
       console.error("account error:", error);
       if (!interaction.replied) {
         await interaction.reply({
           content: "حدث خطأ أثناء عرض الحساب.",
-          ephemeral: true,
+          flags: 64,
         });
       }
     }

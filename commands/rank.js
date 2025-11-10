@@ -11,7 +11,7 @@ module.exports = {
 
   async execute(interaction) {
     if (!interaction.memberPermissions.has(PermissionFlagsBits.Administrator)) {
-      return interaction.reply({ content:"هذا الأمر للمشرف فقط.", ephemeral:true });
+      return interaction.reply({ content:"هذا الأمر للمشرف فقط.", flags: 64 });
     }
 
     const target = interaction.options.getUser("user");
@@ -26,6 +26,6 @@ module.exports = {
     else users[target.id].rank = r;
 
     fs.writeFileSync("./database/users.json", JSON.stringify(users,null,2));
-    return interaction.reply({ content:`تم تعيين رتبة <@${target.id}> إلى **${r}**.`, ephemeral:true });
+    return interaction.reply({ content:`تم تعيين رتبة <@${target.id}> إلى **${r}**.`, flags: 64 });
   }
 };

@@ -36,7 +36,7 @@ module.exports = {
         (reglist ? `\n• قائمة التسجيلات: <#${reglist.id}>` : "") +
         (logs ? `\n• السجلات: <#${logs.id}>` : "") +
         (admin ? `\n• رول الإدارة: <@&${admin.id}>` : ""),
-      ephemeral: true,
+      flags: 64,
     });
   },
 };
