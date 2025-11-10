@@ -322,6 +322,29 @@ client.on("interactionCreate", async (interaction) => {
         );
         return interaction.showModal(modal);
       }
+
+      // Edit user info
+      if (action === "editInfo") {
+        if (!hasPermission(interaction.member, "editInfo", gconf))
+          return interaction.reply({ content: "لا تملك صلاحية هذا الإجراء.", ephemeral: true });
+        if (!target) return interaction.reply({ content: "لم يتم العثور على سجل المستخدم.", ephemeral: true });
+        
+        const modal = new ModalBuilder().setCustomId(`editInfoModal_${userId}`).setTitle("تعديل معلومات المستخدم");
+        const nameInput = new TextInputBuilder().setCustomId("name").setLabel("الاسم").setStyle(TextInputStyle.Short).setValue(target.name || "").setRequired(true);
+        const countryInput = new TextInputBuilder().setCustomId("country").setLabel("البلد").setStyle(TextInputStyle.Short).setValue(target.country || "").setRequired(true);
+        const ageInput = new TextInputBuilder().setCustomId("age").setLabel("العمر").setStyle(TextInputStyle.Short).setValue(String(target.age || "")).setRequired(true);
+        const birthInput = new TextInputBuilder().setCustomId("birth").setLabel("تاريخ الميلاد (YYYY-MM-DD)").setStyle(TextInputStyle.Short).setValue(target.birth || "").setRequired(true);
+        const incomeInput = new TextInputBuilder().setCustomId("income").setLabel("الدخل").setStyle(TextInputStyle.Short).setValue(String(target.income || 0)).setRequired(true);
+        
+        modal.addComponents(
+          new ActionRowBuilder().addComponents(nameInput),
+          new ActionRowBuilder().addComponents(countryInput),
+          new ActionRowBuilder().addComponents(ageInput),
+          new ActionRowBuilder().addComponents(birthInput),
+          new ActionRowBuilder().addComponents(incomeInput)
+        );
+        return interaction.showModal(modal);
+      }
     }
 
     // ====== Modals ======
@@ -391,6 +414,41 @@ client.on("interactionCreate", async (interaction) => {
       }
       GC.patch(interaction.guildId, { fees: { DEPOSIT_FEE: dep, TRANSFER_FEE: trn, WITHDRAW_FEE: wdr } });
       return interaction.reply({ content: `تم تحديث الرسوم: إيداع ${dep}% • تحويل ${trn}% • سحب ${wdr}%`, ephemeral: true });
+    }
+
+    // Edit info modal submit
+    if (interaction.isModalSubmit() && interaction.customId.startsWith("editInfoModal_")) {
+      if (!hasPermission(interaction.member, "editInfo", gconf))
+        return interaction.reply({ content: "لا تملك صلاحية هذا الإجراء.", ephemeral: true });
+
+      const userId = interaction.customId.split("_")[1];
+      const users = loadUsers();
+      const user = users[userId];
+      if (!user) return interaction.reply({ content: "لم يتم العثور على سجل المستخدم.", ephemeral: true });
+
+      const name = interaction.fields.getTextInputValue("name").trim();
+      const country = interaction.fields.getTextInputValue("country").trim();
+      const age = parseInt(interaction.fields.getTextInputValue("age").trim(), 10);
+      const birth = interaction.fields.getTextInputValue("birth").trim();
+      const income = parseInt(interaction.fields.getTextInputValue("income").trim(), 10);
+
+      if (!name || !country || !Number.isFinite(age) || age < 1 || age > 150 ||
+          !/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(birth) || !Number.isFinite(income) || income < 0) {
+        return interaction.reply({ content: "رجاءً أدخل بيانات صحيحة.", ephemeral: true });
+      }
+
+      user.name = name;
+      user.country = country;
+      user.age = age;
+      user.birth = birth;
+      user.income = income;
+      user.updatedAt = new Date().toISOString();
+
+      saveUsers(users);
+      await Sheets.onUserChange?.({ id: userId, ...user }).catch(() => {});
+
+      await pushLog(interaction.guildId, `✏️ ${interaction.user.username} قام بتعديل معلومات <@${userId}>`);
+      return interaction.reply({ content: `✅ تم تحديث معلومات <@${userId}> بنجاح.`, ephemeral: true });
     }
 
     // Register modal submit → prompt الحالة (and maybe الفصيل)

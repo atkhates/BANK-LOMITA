@@ -52,9 +52,10 @@ module.exports = {
       new ButtonBuilder().setCustomId(`addBalance_${target.id}`).setLabel("إضافة رصيد").setStyle(ButtonStyle.Success),
       new ButtonBuilder().setCustomId(`withdraw_${target.id}`).setLabel("سحب").setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId(`promote_${target.id}`).setLabel("ترقية").setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId(`fees`).setLabel("تعديل الرسوم").setStyle(ButtonStyle.Secondary)
+      new ButtonBuilder().setCustomId(`editInfo_${target.id}`).setLabel("تعديل المعلومات").setStyle(ButtonStyle.Primary)
     ));
     rows.push(new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`fees`).setLabel("تعديل الرسوم").setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId(`${u?.frozen ? "unfreeze":"freeze"}_${target.id}`).setLabel(u?.frozen ? "إلغاء تجميد":"تجميد").setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId(`blacklist_${target.id}`).setLabel("قائمة سوداء").setStyle(ButtonStyle.Danger)
     ));
