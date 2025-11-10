@@ -436,6 +436,9 @@ client.on("interactionCreate", async (interaction) => {
         return interaction.reply({ content: "رجاءً أدخل بيانات صحيحة.", flags: 64 });
       }
 
+      // Defer to prevent timeout
+      await interaction.deferReply({ flags: 64 });
+
       user.name = name;
       user.country = country;
       user.age = age;
@@ -447,7 +450,7 @@ client.on("interactionCreate", async (interaction) => {
       await Sheets.onUserChange?.({ id: userId, ...user }).catch(() => {});
 
       await pushLog(interaction.guildId, `✏️ ${interaction.user.username} قام بتعديل معلومات <@${userId}>`);
-      return interaction.reply({ content: `✅ تم تحديث معلومات <@${userId}> بنجاح.`, flags: 64 });
+      return interaction.editReply({ content: `✅ تم تحديث معلومات <@${userId}> بنجاح.` });
     }
 
     // Register modal submit → prompt الحالة (and maybe الفصيل)
