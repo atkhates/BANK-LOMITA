@@ -167,7 +167,13 @@ async function syncUsers(allUsersObj) {
 
   // Format the summary row (make it bold and add a border)
   try {
+    const { data } = await sheets.spreadsheets.get({ spreadsheetId: sheetId });
+    const userSheet = data.sheets.find(s => s.properties.title === 'Users');
+    if (!userSheet) return;
+    
+    const actualSheetId = userSheet.properties.sheetId;
     const lastRow = userCount + 2; // +2 because row 1 is header, users start at row 2
+    
     await sheets.spreadsheets.batchUpdate({
       spreadsheetId: sheetId,
       requestBody: {
@@ -175,7 +181,7 @@ async function syncUsers(allUsersObj) {
           {
             repeatCell: {
               range: {
-                sheetId: 0,
+                sheetId: actualSheetId,
                 startRowIndex: lastRow,
                 endRowIndex: lastRow + 1,
                 startColumnIndex: 0,
@@ -194,7 +200,7 @@ async function syncUsers(allUsersObj) {
           {
             updateBorders: {
               range: {
-                sheetId: 0,
+                sheetId: actualSheetId,
                 startRowIndex: lastRow,
                 endRowIndex: lastRow + 1,
                 startColumnIndex: 0,
