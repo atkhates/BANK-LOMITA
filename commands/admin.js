@@ -43,12 +43,6 @@ module.exports = {
       );
 
     const rows = [];
-    if (u && u.status === "pending") {
-      rows.push(new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId(`approve_${target.id}`).setLabel("موافقة").setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setCustomId(`reject_${target.id}`).setLabel("رفض").setStyle(ButtonStyle.Danger)
-      ));
-    }
     rows.push(new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId(`addBalance_${target.id}`).setLabel("إضافة رصيد").setStyle(ButtonStyle.Success),
       new ButtonBuilder().setCustomId(`withdraw_${target.id}`).setLabel("سحب").setStyle(ButtonStyle.Primary),
