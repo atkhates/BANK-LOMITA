@@ -22,17 +22,17 @@ module.exports = {
 
     const modal = new ModalBuilder().setCustomId("registerModal").setTitle("تسجيل بنكي");
     const name = new TextInputBuilder().setCustomId("name").setLabel("الاسم الكامل").setStyle(TextInputStyle.Short).setRequired(true);
+    const phone = new TextInputBuilder().setCustomId("phone").setLabel("رقم الهاتف").setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder("+1234567890");
     const country = new TextInputBuilder().setCustomId("country").setLabel("الدولة").setStyle(TextInputStyle.Short).setRequired(true);
     const age = new TextInputBuilder().setCustomId("age").setLabel("العمر (16–65)").setStyle(TextInputStyle.Short).setRequired(true);
     const birth = new TextInputBuilder().setCustomId("birth").setLabel("تاريخ الميلاد (YYYY-MM-DD)").setStyle(TextInputStyle.Short).setRequired(true);
-    const income = new TextInputBuilder().setCustomId("income").setLabel(`الدخل الشهري`).setStyle(TextInputStyle.Short).setRequired(true);
 
     modal.addComponents(
       new ActionRowBuilder().addComponents(name),
+      new ActionRowBuilder().addComponents(phone),
       new ActionRowBuilder().addComponents(country),
       new ActionRowBuilder().addComponents(age),
-      new ActionRowBuilder().addComponents(birth),
-      new ActionRowBuilder().addComponents(income)
+      new ActionRowBuilder().addComponents(birth)
     );
 
     await interaction.showModal(modal);

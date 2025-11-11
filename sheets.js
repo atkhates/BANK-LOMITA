@@ -54,16 +54,16 @@ async function ensureHeader() {
   try {
     const { data } = await sheets.spreadsheets.values.get({
       spreadsheetId: sheetId,
-      range: 'Users!A1:M1',
+      range: 'Users!A1:N1',
       valueRenderOption: 'UNFORMATTED_VALUE',
     });
-    const need = ['id','name','country','age','birth','income','rank','balance','status','kind','faction','createdAt','updatedAt'];
+    const need = ['id','name','phone','country','age','birth','income','rank','balance','status','kind','faction','createdAt','updatedAt'];
     const have = (data.values && data.values[0]) || [];
     if (need.every((h, i) => have[i] === h)) return;
 
     await sheets.spreadsheets.values.update({
       spreadsheetId: sheetId,
-      range: 'Users!A1:M1',
+      range: 'Users!A1:N1',
       valueInputOption: 'RAW',
       requestBody: { values: [need] },
     });
@@ -88,7 +88,7 @@ async function upsertUser(row) {
   const idx = ids.indexOf(String(row.id));
 
   const values = [[
-    row.id, row.name || '', row.country || '', row.age ?? '', row.birth || '',
+    row.id, row.name || '', row.phone || '', row.country || '', row.age ?? '', row.birth || '',
     row.income ?? 0, row.rank || '', row.balance ?? 0, row.status || '',
     row.kind || '', row.faction || '', row.createdAt || '', row.updatedAt || ''
   ]];
@@ -103,7 +103,7 @@ async function upsertUser(row) {
     });
   } else {
     // update in place (row number = idx+2)
-    const range = `Users!A${idx+2}:M${idx+2}`;
+    const range = `Users!A${idx+2}:N${idx+2}`;
     await sheets.spreadsheets.values.update({
       spreadsheetId: sheetId, range,
       valueInputOption: 'RAW', requestBody: { values }
@@ -117,7 +117,7 @@ async function syncUsers(allUsersObj) {
 
   const rows = Object.entries(allUsersObj).map(([id,u]) => ([
     id,
-    u.name || '', u.country || '', u.age ?? '', u.birth || '',
+    u.name || '', u.phone || '', u.country || '', u.age ?? '', u.birth || '',
     u.income ?? 0, u.rank || '', u.balance ?? 0, u.status || '',
     u.kind || '', u.faction || '',
     u.createdAt || '', u.updatedAt || ''
@@ -131,7 +131,7 @@ async function syncUsers(allUsersObj) {
 
   // Clear existing data
   await sheets.spreadsheets.values.clear({
-    spreadsheetId: sheetId, range: 'Users!A2:M'
+    spreadsheetId: sheetId, range: 'Users!A2:N'
   });
   
   // Add user data
@@ -185,7 +185,7 @@ async function syncUsers(allUsersObj) {
                 startRowIndex: lastRow,
                 endRowIndex: lastRow + 1,
                 startColumnIndex: 0,
-                endColumnIndex: 13
+                endColumnIndex: 14
               },
               cell: {
                 userEnteredFormat: {
@@ -204,7 +204,7 @@ async function syncUsers(allUsersObj) {
                 startRowIndex: lastRow,
                 endRowIndex: lastRow + 1,
                 startColumnIndex: 0,
-                endColumnIndex: 13
+                endColumnIndex: 14
               },
               top: { style: 'SOLID_THICK' }
             }
@@ -291,7 +291,7 @@ async function restoreUsersFromSheet() {
   try {
     const { data } = await sheets.spreadsheets.values.get({
       spreadsheetId: sheetId,
-      range: 'Users!A2:M',
+      range: 'Users!A2:N',
       valueRenderOption: 'UNFORMATTED_VALUE',
     });
 
@@ -301,11 +301,12 @@ async function restoreUsersFromSheet() {
 
     const users = {};
     data.values.forEach(row => {
-      const [id, name, country, age, birth, income, rank, balance, status, kind, faction, createdAt, updatedAt] = row;
+      const [id, name, phone, country, age, birth, income, rank, balance, status, kind, faction, createdAt, updatedAt] = row;
       if (id) {
         users[String(id)] = {
           id: String(id),
           name: name || '',
+          phone: phone || '',
           country: country || '',
           age: age || 0,
           birth: birth || '',

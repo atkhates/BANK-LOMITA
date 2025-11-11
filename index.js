@@ -349,17 +349,17 @@ client.on("interactionCreate", async (interaction) => {
         
         const modal = new ModalBuilder().setCustomId(`editInfoModal_${userId}`).setTitle("تعديل معلومات المستخدم");
         const nameInput = new TextInputBuilder().setCustomId("name").setLabel("الاسم").setStyle(TextInputStyle.Short).setValue(target.name || "").setRequired(true);
+        const phoneInput = new TextInputBuilder().setCustomId("phone").setLabel("رقم الهاتف").setStyle(TextInputStyle.Short).setValue(target.phone || "").setRequired(true);
         const countryInput = new TextInputBuilder().setCustomId("country").setLabel("البلد").setStyle(TextInputStyle.Short).setValue(target.country || "").setRequired(true);
         const ageInput = new TextInputBuilder().setCustomId("age").setLabel("العمر").setStyle(TextInputStyle.Short).setValue(String(target.age || "")).setRequired(true);
         const birthInput = new TextInputBuilder().setCustomId("birth").setLabel("تاريخ الميلاد (YYYY-MM-DD)").setStyle(TextInputStyle.Short).setValue(target.birth || "").setRequired(true);
-        const incomeInput = new TextInputBuilder().setCustomId("income").setLabel("الدخل").setStyle(TextInputStyle.Short).setValue(String(target.income || 0)).setRequired(true);
         
         modal.addComponents(
           new ActionRowBuilder().addComponents(nameInput),
+          new ActionRowBuilder().addComponents(phoneInput),
           new ActionRowBuilder().addComponents(countryInput),
           new ActionRowBuilder().addComponents(ageInput),
-          new ActionRowBuilder().addComponents(birthInput),
-          new ActionRowBuilder().addComponents(incomeInput)
+          new ActionRowBuilder().addComponents(birthInput)
         );
         return interaction.showModal(modal);
       }
@@ -495,13 +495,13 @@ client.on("interactionCreate", async (interaction) => {
       if (!user) return interaction.reply({ content: "لم يتم العثور على سجل المستخدم.", flags: 64 });
 
       const name = interaction.fields.getTextInputValue("name").trim();
+      const phone = interaction.fields.getTextInputValue("phone").trim();
       const country = interaction.fields.getTextInputValue("country").trim();
       const age = parseInt(interaction.fields.getTextInputValue("age").trim(), 10);
       const birth = interaction.fields.getTextInputValue("birth").trim();
-      const income = parseInt(interaction.fields.getTextInputValue("income").trim(), 10);
 
-      if (!name || !country || !Number.isFinite(age) || age < 1 || age > 150 ||
-          !/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(birth) || !Number.isFinite(income) || income < 0) {
+      if (!name || !phone || !country || !Number.isFinite(age) || age < 1 || age > 150 ||
+          !/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(birth)) {
         return interaction.reply({ content: "رجاءً أدخل بيانات صحيحة.", flags: 64 });
       }
 
@@ -509,10 +509,10 @@ client.on("interactionCreate", async (interaction) => {
       await interaction.deferReply({ flags: 64 });
 
       user.name = name;
+      user.phone = phone;
       user.country = country;
       user.age = age;
       user.birth = birth;
-      user.income = income;
       user.updatedAt = new Date().toISOString();
 
       saveUsers(users);
@@ -521,31 +521,135 @@ client.on("interactionCreate", async (interaction) => {
       await pushLog(interaction.guildId, `✏️ ${interaction.user.username} قام بتعديل معلومات <@${userId}>`);
       return interaction.editReply({ content: `✅ تم تحديث معلومات <@${userId}> بنجاح.` });
     }
+    
+    // Edit income modal (shown after editInfo modal)
+    if (interaction.isButton() && interaction.customId.startsWith("editIncome_")) {
+      const userId = interaction.customId.split("_")[1];
+      const users = loadUsers();
+      const user = users[userId];
+      if (!user) return interaction.reply({ content: "لم يتم العثور على سجل المستخدم.", flags: 64 });
+      
+      const incomeModal = new ModalBuilder().setCustomId(`editIncomeModal_${userId}`).setTitle("تعديل الدخل والنوع");
+      const incomeInput = new TextInputBuilder().setCustomId("income").setLabel("الدخل").setStyle(TextInputStyle.Short).setValue(String(user.income || 0)).setRequired(true);
+      const kindInput = new TextInputBuilder().setCustomId("kind").setLabel("النوع (مدني/عصابة/فصيل)").setStyle(TextInputStyle.Short).setValue(user.kind || "").setRequired(true);
+      const factionInput = new TextInputBuilder().setCustomId("faction").setLabel("الفصيل (شرطة/جيش/طب أو فارغ)").setStyle(TextInputStyle.Short).setValue(user.faction || "").setRequired(false);
+      
+      incomeModal.addComponents(
+        new ActionRowBuilder().addComponents(incomeInput),
+        new ActionRowBuilder().addComponents(kindInput),
+        new ActionRowBuilder().addComponents(factionInput)
+      );
+      return interaction.showModal(incomeModal);
+    }
+    
+    // Edit income modal submit
+    if (interaction.isModalSubmit() && interaction.customId.startsWith("editIncomeModal_")) {
+      if (!hasPermission(interaction.member, "editInfo", gconf))
+        return interaction.reply({ content: "لا تملك صلاحية هذا الإجراء.", flags: 64 });
 
-    // Register modal submit → prompt الحالة (and maybe الفصيل)
+      const userId = interaction.customId.split("_")[1];
+      const users = loadUsers();
+      const user = users[userId];
+      if (!user) return interaction.reply({ content: "لم يتم العثور على سجل المستخدم.", flags: 64 });
+
+      const income = parseInt(interaction.fields.getTextInputValue("income").trim(), 10);
+      const kind = interaction.fields.getTextInputValue("kind").trim();
+      const faction = interaction.fields.getTextInputValue("faction").trim();
+
+      if (!Number.isFinite(income) || income < 0 || !kind) {
+        return interaction.reply({ content: "رجاءً أدخل بيانات صحيحة.", flags: 64 });
+      }
+
+      await interaction.deferReply({ flags: 64 });
+
+      user.income = income;
+      user.kind = kind;
+      user.faction = faction || null;
+      user.updatedAt = new Date().toISOString();
+
+      saveUsers(users);
+      await Sheets.onUserChange?.({ id: userId, ...user }).catch(() => {});
+
+      await pushLog(interaction.guildId, `✏️ ${interaction.user.username} قام بتعديل الدخل والنوع لـ <@${userId}>`);
+      return interaction.editReply({ content: `✅ تم تحديث الدخل والنوع لـ <@${userId}> بنجاح.` });
+    }
+
+    // Register modal submit (step 1: personal info) → prompt for income
     if (interaction.isModalSubmit() && interaction.customId === "registerModal") {
       if (gconf.REGISTER_CHANNEL_ID && interaction.channelId !== gconf.REGISTER_CHANNEL_ID) {
         return interaction.reply({ content: `يمكن إرسال طلب التسجيل فقط من داخل <#${gconf.REGISTER_CHANNEL_ID}>.`, flags: 64 });
       }
 
       const name = interaction.fields.getTextInputValue("name").trim();
+      const phone = interaction.fields.getTextInputValue("phone").trim();
       const country = interaction.fields.getTextInputValue("country").trim();
       const age = parseInt(interaction.fields.getTextInputValue("age").trim(), 10);
       const birth = interaction.fields.getTextInputValue("birth").trim();
+
+      if (!name || !phone || !country || !Number.isFinite(age) || age < 16 || age > 65 ||
+          !/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(birth)) {
+        return interaction.reply({ content: "رجاءً أدخل بيانات تسجيل صحيحة.", flags: 64 });
+      }
+
+      // stash draft (without income yet)
+      regDraft.set(interaction.user.id, { name, phone, country, age, birth });
+
+      // Ask for income in next step
+      const incomeBtn = new ButtonBuilder()
+        .setCustomId("reg_income_btn")
+        .setLabel("📊 إدخال الدخل الشهري")
+        .setStyle(ButtonStyle.Primary);
+
+      return interaction.reply({
+        content: "✅ تم استلام المعلومات الشخصية.\n\n📋 **الخطوة التالية:** أدخل الدخل الشهري للمتابعة.",
+        components: [new ActionRowBuilder().addComponents(incomeBtn)],
+        flags: 64,
+      });
+    }
+
+    // Income button → show income modal
+    if (interaction.isButton() && interaction.customId === "reg_income_btn") {
+      const draft = regDraft.get(interaction.user.id);
+      if (!draft) {
+        return interaction.reply({ content: "يرجى البدء من جديد بأمر /register", flags: 64 });
+      }
+
+      const incomeModal = new ModalBuilder()
+        .setCustomId("registerIncomeModal")
+        .setTitle("الدخل الشهري");
+      
+      const incomeInput = new TextInputBuilder()
+        .setCustomId("income")
+        .setLabel("أدخل دخلك الشهري")
+        .setStyle(TextInputStyle.Short)
+        .setPlaceholder("مثال: 50000")
+        .setRequired(true);
+
+      incomeModal.addComponents(new ActionRowBuilder().addComponents(incomeInput));
+      return interaction.showModal(incomeModal);
+    }
+
+    // Income modal submit → prompt for status/kind
+    if (interaction.isModalSubmit() && interaction.customId === "registerIncomeModal") {
+      const draft = regDraft.get(interaction.user.id);
+      if (!draft) {
+        return interaction.reply({ content: "يرجى البدء من جديد بأمر /register", flags: 64 });
+      }
+
       const income = parseInt(interaction.fields.getTextInputValue("income").trim(), 10);
 
-      if (!name || !country || !Number.isFinite(age) || age < 16 || age > 65 ||
-          !/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(birth) || !Number.isFinite(income) || income <= 0) {
-        return interaction.reply({ content: "رجاءً أدخل بيانات تسجيل صحيحة.", flags: 64 });
+      if (!Number.isFinite(income) || income <= 0) {
+        return interaction.reply({ content: "رجاءً أدخل دخلاً صحيحاً أكبر من 0.", flags: 64 });
       }
       if (income < (gconf.MIN_DEPOSIT || 0)) {
         return interaction.reply({ content: `الحد الأدنى للدخل هو ${gconf.MIN_DEPOSIT} ${gconf.CURRENCY_SYMBOL || "$"}.`, flags: 64 });
       }
 
-      // stash draft
-      regDraft.set(interaction.user.id, { name, country, age, birth, income });
+      // Update draft with income
+      draft.income = income;
+      regDraft.set(interaction.user.id, draft);
 
-      // الحالة + fallback button
+      // Now show status selection
       const statusSelect = new StringSelectMenuBuilder()
         .setCustomId("reg_status_after")
         .setPlaceholder("اختر الحالة")
@@ -561,7 +665,7 @@ client.on("interactionCreate", async (interaction) => {
         .setStyle(ButtonStyle.Primary);
 
       return interaction.reply({
-        content: "📋 تم استلام النموذج. اختر **الحالة**.\nإذا اخترت **فصيل** سيظهر اختيار الفصيل، وبعدها سيتم الإرسال تلقائيًا.",
+        content: "✅ تم استلام الدخل.\n\n📋 **الخطوة الأخيرة:** اختر **الحالة**.\nإذا اخترت **فصيل** سيظهر اختيار الفصيل، وبعدها سيتم الإرسال تلقائيًا.",
         components: [
           new ActionRowBuilder().addComponents(statusSelect),
           new ActionRowBuilder().addComponents(confirmBtn),
@@ -602,6 +706,7 @@ async function finalizeRegistration(interaction, draft) {
 
     U[id] = {
       name: draft.name,
+      phone: draft.phone,
       country: draft.country,
       age: draft.age,
       birth: draft.birth,
@@ -671,6 +776,7 @@ client.on("userRegistered", async (user, guildId) => {
       .setDescription(`${user.mention} — \n${user.tag}`)
       .addFields(
         { name: "الاسم", value: String(user.name || "—"), inline: true },
+        { name: "رقم الهاتف", value: String(user.phone || "—"), inline: true },
         { name: "البلد", value: String(user.country || "—"), inline: true },
         { name: "العمر", value: String(user.age ?? "—"), inline: true },
         { name: "تاريخ الميلاد", value: String(user.birth || "—"), inline: true },

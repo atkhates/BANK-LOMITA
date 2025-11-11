@@ -21,7 +21,7 @@ module.exports = {
 
     const g = GC.get(interaction.guildId);
     const data = u || {
-      name: target.username, country:"—", age:"—", birth:"—", income:0, rank:g.ranks[0], balance:0, status:"no-record", kind:"—", faction:"—"
+      name: target.username, phone:"—", country:"—", age:"—", birth:"—", income:0, rank:g.ranks[0], balance:0, status:"no-record", kind:"—", faction:"—"
     };
 
     const embed = new EmbedBuilder()
@@ -29,6 +29,7 @@ module.exports = {
       .setDescription(`${target} — \n${target.tag}`)
       .addFields(
         { name:"الاسم", value:String(data.name), inline:true },
+        { name:"رقم الهاتف", value:String(data.phone || "—"), inline:true },
         { name:"البلد", value:String(data.country), inline:true },
         { name:"العمر", value:String(data.age), inline:true },
         { name:"تاريخ الميلاد", value:String(data.birth), inline:true },
@@ -37,7 +38,7 @@ module.exports = {
         { name:"الرصيد", value:String(data.balance), inline:true },
         { name:"الحالة", value:String(data.status), inline:true },
         { name:"النوع", value:String(data.kind), inline:true },
-        { name:"فصيل", value:String(data.faction), inline:true },
+        { name:"فصيل", value:String(data.faction || "—"), inline:true },
         { name:"ID", value:target.id, inline:false }
       );
 
@@ -52,7 +53,8 @@ module.exports = {
       new ButtonBuilder().setCustomId(`addBalance_${target.id}`).setLabel("إضافة رصيد").setStyle(ButtonStyle.Success),
       new ButtonBuilder().setCustomId(`withdraw_${target.id}`).setLabel("سحب").setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId(`promote_${target.id}`).setLabel("ترقية").setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId(`editInfo_${target.id}`).setLabel("تعديل المعلومات").setStyle(ButtonStyle.Primary)
+      new ButtonBuilder().setCustomId(`editInfo_${target.id}`).setLabel("تعديل المعلومات").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId(`editIncome_${target.id}`).setLabel("تعديل الدخل والنوع").setStyle(ButtonStyle.Secondary)
     ));
     rows.push(new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId(`fees`).setLabel("تعديل الرسوم").setStyle(ButtonStyle.Secondary),
