@@ -35,39 +35,65 @@ for (const f of fs.readdirSync("./commands").filter(x => x.endsWith(".js"))) {
 }
 
 // ===== util: file & persistence =====
-function ensureFile(path) {
+function ensureFile(path, defaultContent = path.endsWith(".json") ? "{}" : "") {
   const dir = path.split("/").slice(0, -1).join("/");
   if (dir && !fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  if (!fs.existsSync(path)) fs.writeFileSync(path, path.endsWith(".json") ? "{}" : "");
+  if (!fs.existsSync(path)) fs.writeFileSync(path, defaultContent);
 }
 
 function loadUsers() {
-  ensureFile("./database/users.json");
+  ensureFile("./database/users.json", "{}");
   return JSON.parse(fs.readFileSync("./database/users.json", "utf8") || "{}");
 }
 function saveUsers(users) {
-  ensureFile("./database/users.json");
+  ensureFile("./database/users.json", "{}");
   fs.writeFileSync("./database/users.json", JSON.stringify(users, null, 2));
   // sync to Google Sheet if available
   Promise.resolve(Sheets.syncUsers(users)).catch(() => {});
 }
 
 function loadTx() {
-  ensureFile("./database/transactions.json");
-  try { return JSON.parse(fs.readFileSync("./database/transactions.json", "utf8") || "[]"); }
-  catch { return []; }
+  ensureFile("./database/transactions.json", "[]");
+  try {
+    const parsed = JSON.parse(fs.readFileSync("./database/transactions.json", "utf8") || "[]");
+    if (Array.isArray(parsed)) return parsed;
+  } catch {}
+  // reset to a safe default if file content is invalid
+  saveTx([]);
+  return [];
 }
 function saveTx(arr) {
-  ensureFile("./database/transactions.json");
-  fs.writeFileSync("./database/transactions.json", JSON.stringify(arr, null, 2));
+  ensureFile("./database/transactions.json", "[]");
+  const safe = Array.isArray(arr) ? arr : [];
+  fs.writeFileSync("./database/transactions.json", JSON.stringify(safe, null, 2));
 }
 function pushTx(entry) {
-  const arr = loadTx();
-  arr.push({ ts: new Date().toISOString(), ...entry });
-  saveTx(arr);
+  let arr;
+  try {
+    const current = loadTx();
+    arr = Array.isArray(current) ? current : [];
+  } catch {
+    arr = [];
+  }
+  if (typeof arr.push !== "function") arr = [];
+
+  const record = { ts: new Date().toISOString(), ...entry };
+  try {
+    arr.push(record);
+  } catch {
+    arr = [record];
+  }
+  try {
+    saveTx(arr);
+  } catch {}
   // sheet log if provided
-  Promise.resolve(Sheets.logTx(entry)).catch(() => {});
+  const logFn = Sheets?.logTx;
+  if (typeof logFn === "function") Promise.resolve(logFn(record)).catch(() => {});
 }
+
+// Ensure database files exist on startup
+ensureFile("./database/users.json", "{}");
+ensureFile("./database/transactions.json", "[]");
 
 // ===== helpers: perms & logs =====
 function hasAnyRoleId(member, ids = []) {
@@ -94,20 +120,21 @@ async function pushLog(guildId, content) {
 }
 
 // Transaction log to dedicated channel
-async function logTransaction(guildId, embed) {
+async function logTransaction(guildId, embed, fallbackChannelId) {
   const gconf = GC.get(guildId);
-  if (!gconf.TRANSACTION_LOG_CHANNEL_ID) return;
+  const channelIds = [gconf.TRANSACTION_LOG_CHANNEL_ID, fallbackChannelId].filter(Boolean);
+  if (!channelIds.length) return;
   try {
-    const ch =
-      client.channels.cache.get(gconf.TRANSACTION_LOG_CHANNEL_ID) ||
-      (await client.channels.fetch(gconf.TRANSACTION_LOG_CHANNEL_ID).catch(() => null));
-    if (ch) {
-      if (typeof embed === 'string') {
-        ch.send(embed);
-      } else {
-        ch.send({ embeds: [embed] });
-      }
+    let ch = null;
+    for (const cid of channelIds) {
+      ch =
+        client.channels.cache.get(cid) ||
+        (await client.channels.fetch(cid).catch(() => null));
+      if (ch) break;
     }
+    if (!ch) return;
+    const payload = (typeof embed === "string") ? embed : { embeds: [embed] };
+    ch.send(payload).catch(() => {});
   } catch {}
 }
 
@@ -412,7 +439,7 @@ client.on("interactionCreate", async (interaction) => {
         )
         .setTimestamp();
       
-      logTransaction(interaction.guildId, depositEmbed);
+      logTransaction(interaction.guildId, depositEmbed, interaction.channelId);
       await pushLog(interaction.guildId, `💰 <@${interaction.user.id}> أضاف ${amount}${gconf.CURRENCY_SYMBOL || "$"} إلى حساب <@${userId}>. الرصيد الجديد: ${user.balance}${gconf.CURRENCY_SYMBOL || "$"}`);
 
       await interaction.reply({ content: `✅ تم إضافة ${amount}${gconf.CURRENCY_SYMBOL || "$"} إلى <@${userId}>. الرصيد: ${user.balance}${gconf.CURRENCY_SYMBOL || "$"}`, flags: 64 });
@@ -459,7 +486,7 @@ client.on("interactionCreate", async (interaction) => {
         )
         .setTimestamp();
       
-      logTransaction(interaction.guildId, withdrawEmbed);
+      logTransaction(interaction.guildId, withdrawEmbed, interaction.channelId);
       await pushLog(interaction.guildId, `💸 <@${interaction.user.id}> سحب ${amount}${gconf.CURRENCY_SYMBOL || "$"} من حساب <@${userId}> (رسوم: ${fee}${gconf.CURRENCY_SYMBOL || "$"}). الرصيد المتبقي: ${user.balance}${gconf.CURRENCY_SYMBOL || "$"}`);
 
       await interaction.reply({ content: `✅ تم سحب ${amount}${gconf.CURRENCY_SYMBOL || "$"} من <@${userId}> (رسم: ${fee}${gconf.CURRENCY_SYMBOL || "$"}). الرصيد الحالي: ${user.balance}${gconf.CURRENCY_SYMBOL || "$"}`, flags: 64 });

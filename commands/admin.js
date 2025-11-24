@@ -2,6 +2,11 @@ const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, Butt
 const GC = require("../guildConfig");
 const fs = require("fs");
 
+function ensureUsersFile() {
+  if (!fs.existsSync("./database")) fs.mkdirSync("./database", { recursive: true });
+  if (!fs.existsSync("./database/users.json")) fs.writeFileSync("./database/users.json", "{}");
+}
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("admin")
@@ -15,8 +20,8 @@ module.exports = {
 
     const target = interaction.options.getUser("target") || interaction.user;
 
-    if (!fs.existsSync("./database/users.json")) fs.writeFileSync("./database/users.json","{}");
-    const users = JSON.parse(fs.readFileSync("./database/users.json","utf8"));
+    ensureUsersFile();
+    const users = JSON.parse(fs.readFileSync("./database/users.json", "utf8") || "{}");
     const u = users[target.id];
 
     const g = GC.get(interaction.guildId);

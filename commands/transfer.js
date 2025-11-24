@@ -44,7 +44,7 @@ module.exports = {
       )
       .setTimestamp();
     
-    logTransaction(interaction.guildId, embed);
+    logTransaction(interaction.guildId, embed, interaction.channelId);
     await pushLog(interaction.guildId, `💸 <@${from}> حول ${amount}${g.CURRENCY_SYMBOL} إلى <@${to}> (رسوم ${fee}${g.CURRENCY_SYMBOL})`);
 
     return interaction.reply({ content:`تم تحويل ${amount}${g.CURRENCY_SYMBOL} إلى <@${to}> (رسوم ${fee}).`, flags: 64 });

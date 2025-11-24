@@ -46,7 +46,7 @@ module.exports = {
       )
       .setTimestamp();
     
-    logTransaction(interaction.guildId, embed);
+    logTransaction(interaction.guildId, embed, interaction.channelId);
     await pushLog(interaction.guildId, `💰 <@${uid}> سحب ${amount}${g.CURRENCY_SYMBOL} (رسوم ${fee}${g.CURRENCY_SYMBOL}). الرصيد المتبقي: ${A.balance}${g.CURRENCY_SYMBOL}`);
 
     return interaction.reply({ content:`💸 تم سحب ${amount}${g.CURRENCY_SYMBOL} (رسوم ${fee}).`, flags: 64 });
